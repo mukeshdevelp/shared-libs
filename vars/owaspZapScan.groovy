@@ -35,20 +35,19 @@ def call(Map config = [:]) {
                 '''
             }
 
+            // NEW
             stage('Check ZAP Installation') {
-                echo "Verifying OWASP ZAP at ${zapPath}..."
+                echo "Verifying OWASP ZAP installation..."
                 sh """
-                    if [ ! -f "${zapPath}" ]; then
-                        echo "ERROR: zap.sh not found at ${zapPath}"
+                    if [ ! -f "/usr/local/bin/zap.sh" ]; then
+                        echo "ERROR: zap.sh not found at /usr/local/bin/zap.sh"
                         exit 1
                     fi
 
-                    echo "ZAP found at: ${zapPath}"
-                    echo "-----------------------------------"
-                    ls -lh ${zapPath}
+                    echo "ZAP found at: /usr/local/bin/zap.sh"
+                    ls -lh /usr/local/bin/zap.sh
                     echo "ZAP Version:"
-                    ${zapPath} -version 2>/dev/null || echo "Version flag not supported, ZAP is present"
-                    echo "-----------------------------------"
+                    /usr/local/bin/zap.sh -version 2>/dev/null || echo "ZAP is present at /usr/local/bin/zap.sh"
                 """
             }
 
@@ -60,12 +59,12 @@ def call(Map config = [:]) {
                 echo "Starting ZAP daemon..."
                 sh """
                     echo "Using JAVA_HOME : \$JAVA_HOME"
-                    echo "Using ZAP       : ${zapPath}"
+                    echo "Using ZAP       : /usr/local/bin/zap.sh"
                     java -version
 
                     export JAVA_OPTS="-Xmx1024m"
 
-                    nohup ${zapPath} -daemon \\
+                    nohup /usr/local/bin/zap.sh -daemon \\
                         -port ${zapPort} \\
                         -host 127.0.0.1 \\
                         -config api.key=${zapApiKey} \\
