@@ -2,29 +2,32 @@ def call(Map config = [:]) {
 
     def targetIp     = config.targetIp     ?: "3.235.197.134"
     def targetPort   = config.targetPort   ?: "8081"
-    def targetUrl    = config.targetUrl    ?: "http://${targetIp}:${targetPort}/"
+    def targetUrl    = config.targetUrl    ?: "http://${targetIp}:${targetPort}"
     def zapPort      = config.zapPort      ?: "9000"
     def zapApiKey    = config.zapApiKey    ?: "attendancekey"
     def reportDir    = config.reportDir    ?: "zap-reports"
-    def zapDir       = config.zapDir       ?: "zap"
     def slackChannel = config.slackChannel ?: "#ci-operation-notifications"
 
-    node {
-        def javaHome = tool name: 'jdk17', type: 'jdk'
+    // ZAP installed at known path
+    def zapPath      = "/usr/local/bin/zap.sh"
 
+    node {
+
+        def javaHome = tool name: 'jdk17', type: 'jdk'
         env.JAVA_HOME = javaHome
-        env.PATH = "${javaHome}/bin:${env.PATH}"
+        env.PATH      = "${javaHome}/bin:${env.PATH}"
+
         try {
 
-          
+        
             // SETUP
-       
+           
 
             stage('Clean Workspace') {
                 echo "Cleaning workspace..."
                 cleanWs()
             }
-            
+
             stage('Verify Java') {
                 sh '''
                     echo "JAVA_HOME: $JAVA_HOME"
@@ -32,39 +35,37 @@ def call(Map config = [:]) {
                 '''
             }
 
-            stage('check ZAP Installation') {
-                echo "Downloading OWASP ZAP..."
+            stage('Check ZAP Installation') {
+                echo "Verifying OWASP ZAP at ${zapPath}..."
                 sh """
-                    zap --version
+                    if [ ! -f "${zapPath}" ]; then
+                        echo "ERROR: zap.sh not found at ${zapPath}"
+                        exit 1
+                    fi
+
+                    echo "ZAP found at: ${zapPath}"
+                    echo "-----------------------------------"
+                    ls -lh ${zapPath}
+                    echo "ZAP Version:"
+                    ${zapPath} -version 2>/dev/null || echo "Version flag not supported, ZAP is present"
+                    echo "-----------------------------------"
                 """
             }
 
-      
+           
             // ZAP DAEMON
-     
+          
 
             stage('Start ZAP') {
                 echo "Starting ZAP daemon..."
                 sh """
-                    JAVA_DIR=\$(ls -d java/jdk-17* | head -n 1)
-                    export JAVA_HOME=\$PWD/\$JAVA_DIR
-                    export PATH=\$JAVA_HOME/bin:\$PATH
-
-                    echo "Using JAVA_HOME=\$JAVA_HOME"
+                    echo "Using JAVA_HOME : \$JAVA_HOME"
+                    echo "Using ZAP       : ${zapPath}"
                     java -version
 
-                    ZAP_PATH=\$(find ${zapDir} -name zap.sh | head -n 1)
-
-                    if [ -z "\$ZAP_PATH" ]; then
-                        echo "ERROR: zap.sh not found!"
-                        ls -R ${zapDir}
-                        exit 1
-                    fi
-
-                    echo "Using ZAP from: \$ZAP_PATH"
                     export JAVA_OPTS="-Xmx1024m"
 
-                    nohup \$ZAP_PATH -daemon \\
+                    nohup ${zapPath} -daemon \\
                         -port ${zapPort} \\
                         -host 127.0.0.1 \\
                         -config api.key=${zapApiKey} \\
@@ -93,21 +94,20 @@ def call(Map config = [:]) {
             stage('Configure ZAP Timeout') {
                 echo "Increasing ZAP connection and read timeouts..."
                 sh """
-                    # Set connection timeout to 60 seconds (value in seconds)
                     curl -sf "http://127.0.0.1:${zapPort}/JSON/core/action/setOptionTimeoutInSecs/?Integer=60&apikey=${zapApiKey}"
                     echo "Connection timeout set to 60s"
 
-                    # Set read timeout to 120 seconds
                     curl -sf "http://127.0.0.1:${zapPort}/JSON/network/action/setConnectionTimeout/?timeout=120&apikey=${zapApiKey}" || true
                     curl -sf "http://127.0.0.1:${zapPort}/JSON/network/action/setReadTimeout/?timeout=120&apikey=${zapApiKey}" || true
                     echo "Read timeout set to 120s"
 
-                    # Verify settings
                     curl -sf "http://127.0.0.1:${zapPort}/JSON/core/view/optionTimeoutInSecs/?apikey=${zapApiKey}" || true
                 """
             }
+
+   
             // SCANNING
-          
+       
 
             stage('Run Spider Scan') {
                 echo "Running Spider Scan on ${targetUrl}..."
@@ -118,23 +118,19 @@ def call(Map config = [:]) {
                     SCAN_ID=\$(echo \$RESPONSE | grep -o '"scan":"[^"]*"' | grep -o '[0-9]*')
                     echo "Spider Scan ID: \$SCAN_ID"
 
-                    echo "Polling spider scan progress..."
                     MAX_WAIT=180
                     WAITED=0
                     while true; do
                         PROGRESS=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/spider/view/status/?scanId=\$SCAN_ID&apikey=${zapApiKey}" | grep -o '"status":"[^"]*"' | grep -o '[0-9]*')
                         echo "Spider scan progress: \${PROGRESS}%"
-
                         if [ "\$PROGRESS" = "100" ]; then
                             echo "Spider scan completed!"
                             break
                         fi
-
                         if [ \$WAITED -ge \$MAX_WAIT ]; then
-                            echo "WARNING: Spider scan did not complete within \${MAX_WAIT}s, proceeding anyway..."
+                            echo "WARNING: Spider scan timed out after \${MAX_WAIT}s, proceeding..."
                             break
                         fi
-
                         sleep 10
                         WAITED=\$((WAITED + 10))
                     done
@@ -145,18 +141,14 @@ def call(Map config = [:]) {
                 echo "Registering API endpoints with ZAP proxy..."
                 sh """
                     curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance || true
-
                     curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/search/all || true
                     curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}/api/v1/attendance/search?id=456" || true
                     curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}/api/v1/attendance/search?id=786" || true
 
                     curl -s -X POST -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/create \\
                         -H "Content-Type: application/json" \\
-                        -d '{"id":10002,"status":"Present","date":"Sun, 11 Jan 2026 00:00:00 GMT","name":"Mukesh Modi"}' || true
+                        -d '{"id":10002,"status":"Present","date":"2026-01-11","name":"Mukesh Modi"}' || true
 
-                    
-
-                    
                     curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/health || true
                     curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/health/detail || true
 
@@ -167,36 +159,32 @@ def call(Map config = [:]) {
             stage('Run Active Scan') {
                 echo "Running Active Scan on ${targetUrl}..."
                 sh """
-                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}api/v1/attendance/search/all&apikey=${zapApiKey}")
+                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}/api/v1/attendance/search/all&apikey=${zapApiKey}")
                     echo "Active scan response: \$RESPONSE"
 
                     SCAN_ID=\$(echo \$RESPONSE | grep -o '"scan":"[^"]*"' | grep -o '[0-9]*')
                     echo "Active Scan ID: \$SCAN_ID"
 
-                    echo "Polling active scan progress..."
                     MAX_WAIT=300
                     WAITED=0
                     while true; do
                         PROGRESS=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/view/status/?scanId=\$SCAN_ID&apikey=${zapApiKey}" | grep -o '"status":"[^"]*"' | grep -o '[0-9]*')
                         echo "Active scan progress: \${PROGRESS}%"
-
                         if [ "\$PROGRESS" = "100" ]; then
                             echo "Active scan completed!"
                             break
                         fi
-
                         if [ \$WAITED -ge \$MAX_WAIT ]; then
-                            echo "WARNING: Active scan did not complete within \${MAX_WAIT}s, proceeding anyway..."
+                            echo "WARNING: Active scan timed out after \${MAX_WAIT}s, proceeding..."
                             break
                         fi
-
                         sleep 15
                         WAITED=\$((WAITED + 15))
                     done
                 """
             }
 
-           
+            
             // REPORT
             
 
@@ -229,7 +217,6 @@ def call(Map config = [:]) {
                     color: 'danger',
                     message: """
                     FAILED - OWASP ZAP Scan
-
                     Job:    ${env.JOB_NAME}
                     Build:  #${env.BUILD_NUMBER}
                     URL:    ${env.BUILD_URL}
@@ -246,10 +233,7 @@ def call(Map config = [:]) {
 
             stage('Post Actions') {
                 echo "Stopping ZAP and cleaning up..."
-                sh """
-                    pkill -f zap.sh || true
-                    rm -rf ${zapDir} || true
-                """
+                sh "pkill -f zap.sh || true"
 
                 if (currentBuild.result != 'FAILURE') {
                     try {
@@ -258,7 +242,6 @@ def call(Map config = [:]) {
                             color: 'good',
                             message: """
                             SUCCESS - OWASP ZAP Scan
-
                             Job:    ${env.JOB_NAME}
                             Build:  #${env.BUILD_NUMBER}
                             URL:    ${env.BUILD_URL}
