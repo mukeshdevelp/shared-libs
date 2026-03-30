@@ -1,4 +1,4 @@
-@Library('mukesh_ut_java') _
+@Library('mukesh_ut_python') _
 
 pythonUnitTest(
     repoUrl:         "https://github.com/mukeshdevelp/ot-microservice-sarthi.git",
