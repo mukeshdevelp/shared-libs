@@ -104,9 +104,32 @@ def call(Map config = [:]) {
             stage('Run Spider Scan') {
                 echo "Running Spider Scan on ${targetUrl}..."
                 sh """
-                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/spider/action/scan/?url=${targetUrl}/api/v1/attendance&apikey=${zapApiKey}")
+                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/spider/action/scan/?url=${targetUrl}&apikey=${zapApiKey}")
                     echo "Spider scan response: \$RESPONSE"
-                    echo "Spider scan triggered."
+
+                    SCAN_ID=\$(echo \$RESPONSE | grep -o '"scan":"[^"]*"' | grep -o '[0-9]*')
+                    echo "Spider Scan ID: \$SCAN_ID"
+
+                    echo "Polling spider scan progress..."
+                    MAX_WAIT=180
+                    WAITED=0
+                    while true; do
+                        PROGRESS=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/spider/view/status/?scanId=\$SCAN_ID&apikey=${zapApiKey}" | grep -o '"status":"[^"]*"' | grep -o '[0-9]*')
+                        echo "Spider scan progress: \${PROGRESS}%"
+
+                        if [ "\$PROGRESS" = "100" ]; then
+                            echo "Spider scan completed!"
+                            break
+                        fi
+
+                        if [ \$WAITED -ge \$MAX_WAIT ]; then
+                            echo "WARNING: Spider scan did not complete within \${MAX_WAIT}s, proceeding anyway..."
+                            break
+                        fi
+
+                        sleep 10
+                        WAITED=\$((WAITED + 10))
+                    done
                 """
             }
 
@@ -136,9 +159,32 @@ def call(Map config = [:]) {
             stage('Run Active Scan') {
                 echo "Running Active Scan on ${targetUrl}..."
                 sh """
-                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}/api/v1/attendance/search/all&apikey=${zapApiKey}")
+                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}api/v1/attendance/search/all&apikey=${zapApiKey}")
                     echo "Active scan response: \$RESPONSE"
-                    echo "Active scan triggered."
+
+                    SCAN_ID=\$(echo \$RESPONSE | grep -o '"scan":"[^"]*"' | grep -o '[0-9]*')
+                    echo "Active Scan ID: \$SCAN_ID"
+
+                    echo "Polling active scan progress..."
+                    MAX_WAIT=300
+                    WAITED=0
+                    while true; do
+                        PROGRESS=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/view/status/?scanId=\$SCAN_ID&apikey=${zapApiKey}" | grep -o '"status":"[^"]*"' | grep -o '[0-9]*')
+                        echo "Active scan progress: \${PROGRESS}%"
+
+                        if [ "\$PROGRESS" = "100" ]; then
+                            echo "Active scan completed!"
+                            break
+                        fi
+
+                        if [ \$WAITED -ge \$MAX_WAIT ]; then
+                            echo "WARNING: Active scan did not complete within \${MAX_WAIT}s, proceeding anyway..."
+                            break
+                        fi
+
+                        sleep 15
+                        WAITED=\$((WAITED + 15))
+                    done
                 """
             }
 
