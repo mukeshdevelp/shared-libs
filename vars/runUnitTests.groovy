@@ -34,7 +34,7 @@ def call(Map config = [:]) {
                 steps {
                     dir('salary/salary-api') {
                         sh 'pwd'
-                        sh 'mvn clean test'
+                        sh 'mvn clean test -Dspring.profiles.active=test'
                     }
                     echo "Unit Tests Completed"
                 }
