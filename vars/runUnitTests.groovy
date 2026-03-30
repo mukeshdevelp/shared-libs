@@ -34,6 +34,7 @@ def call(Map config = [:]) {
                 steps {
                     dir('salary/salary-api') {
                         sh 'pwd'
+                        sh 'ls -la'
                         sh 'mvn clean test'
                     }
                     echo "Unit Tests Completed"
