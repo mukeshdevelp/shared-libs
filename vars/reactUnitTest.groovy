@@ -51,17 +51,7 @@ def call(Map config = [:]) {
                     def emoji = emojiMap.get(status, "")
                     def color = colorMap.get(status, "danger")
 
-                    slackSend(
-                        
-                        channel: slackChannel,
-                        color: color,
-                        message: """\
-                        ${emoji} *${status}* - React Unit Testing
-                        *Job:* ${env.JOB_NAME}
-                        *Build:* #${env.BUILD_NUMBER}
-                        *Branch:* ${gitBranch}
-                        *URL:* ${env.BUILD_URL}""".stripIndent()
-                    )
+                    
                 }
 
                 cleanWs()
