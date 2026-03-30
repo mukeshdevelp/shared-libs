@@ -3,7 +3,7 @@ def call(Map config = [:]) {
     def gitRepo       = config.gitRepo ?: "https://github.com/OT-MICROSERVICES/frontend.git"
     def gitBranch     = config.gitBranch ?: "main"
     def slackChannel  = config.slackChannel ?: "#ci-operation-notifications"
-    def slackCredId   = config.slackCredId ?: "Shreyas-Slack"
+    
     def nodeTool      = config.nodeTool ?: "node-25"
 
     pipeline {
@@ -62,7 +62,7 @@ def call(Map config = [:]) {
 
                     try {
                         step([
-                            $class: 'SlackSendStep',
+                            
                             channel: slackChannel,
                             color: color,
                             message: """\
