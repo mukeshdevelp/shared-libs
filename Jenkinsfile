@@ -4,5 +4,5 @@
 
 runUnitTests(
     repoUrl: "https://github.com/OT-MICROSERVICES/salary-api.git",
-    branch: 'backend'
+    branch: 'main'
 )
