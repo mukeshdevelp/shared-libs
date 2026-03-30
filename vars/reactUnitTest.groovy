@@ -1,10 +1,9 @@
 def call(Map config = [:]) {
 
-    def gitRepo       = config.gitRepo ?: "https://github.com/OT-MICROSERVICES/frontend.git"
-    def gitBranch     = config.gitBranch ?: "main"
-    def slackChannel  = config.slackChannel ?: "#ci-operation-notifications"
-    def color = currentBuild.currentResult == 'SUCCESS' ? 'good' : 'danger'
-    def nodeTool      = config.nodeTool ?: "node-25"
+    def gitRepo      = config.gitRepo      ?: "https://github.com/OT-MICROSERVICES/frontend.git"
+    def gitBranch    = config.gitBranch    ?: "main"
+    def slackChannel = config.slackChannel ?: "#ci-operation-notifications"
+    def nodeTool     = config.nodeTool     ?: "node-16"
 
     pipeline {
         agent any
@@ -26,8 +25,8 @@ def call(Map config = [:]) {
                     sh 'npm --version'
                     sh 'node --version'
                     timeout(time: 10, unit: 'MINUTES') {
-                    sh 'npm install --verbose'
-}
+                        sh 'npm install --verbose'
+                    }
                 }
             }
 
@@ -46,9 +45,7 @@ def call(Map config = [:]) {
 
             stage('Run Unit Tests (Jest Directly)') {
                 steps {
-                    sh '''
-                        npx jest --coverage --passWithNoTests > file.txt
-                    '''
+                    sh 'npx jest --coverage --passWithNoTests > file.txt'
                 }
             }
         }
@@ -56,29 +53,28 @@ def call(Map config = [:]) {
         post {
             always {
                 script {
-                    
-
-                    
+                    // Evaluated HERE — after build result is known
+                    def color = currentBuild.currentResult == 'SUCCESS' ? 'good' : 'danger'
 
                     try {
-                        step([
-                            $class: 'SlackSendStep',
+                        // Use slackSend directly, not step([...])
+                        slackSend(
                             channel: slackChannel,
-                            color: color, 
+                            color: color,
                             message: """\
                             Jest Unit Testing
                             *Job:* ${env.JOB_NAME}
                             *Build:* #${env.BUILD_NUMBER}
                             *Branch:* ${gitBranch}
+                            *Status:* ${currentBuild.currentResult}
                             *URL:* ${env.BUILD_URL}"""
-                        ])
+                        )
                     } catch (Exception e) {
-                        echo "Slack plugin not installed, skipping notification"
+                        echo "Slack notification failed: ${e.message}"
                     }
                 }
 
                 archiveArtifacts artifacts: 'file.txt', fingerprint: true, allowEmptyArchive: true
-
                 cleanWs()
             }
         }

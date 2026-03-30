@@ -1,0 +1,8 @@
+@Library('react-shared-lib') _
+
+reactUnitTest(
+    gitRepo:      "https://github.com/OT-MICROSERVICES/frontend.git",
+    gitBranch:    "main",
+    nodeTool:     "node-16",        // matches Jenkins NodeJS tool name
+    slackChannel: "#ci-operation-notifications"
+)
