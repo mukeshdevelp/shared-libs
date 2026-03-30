@@ -25,7 +25,9 @@ def call(Map config = [:]) {
                 steps {
                     sh 'npm --version'
                     sh 'node --version'
-                    sh 'npm install'
+                    timeout(time: 10, unit: 'MINUTES') {
+                    sh 'npm install --verbose'
+}
                 }
             }
 
