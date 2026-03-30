@@ -1,12 +1,12 @@
 def call(Map config = [:]) {
 
-    def targetIp    = config.targetIp    ?: "98.92.250.177"
-    def targetPort  = config.targetPort  ?: "8081"
-    def targetUrl   = config.targetUrl   ?: "http://${targetIp}:${targetPort}/"
-    def zapPort     = config.zapPort     ?: "9000"
-    def zapApiKey   = config.zapApiKey   ?: "attendancekey"
-    def reportDir   = config.reportDir   ?: "zap-reports"
-    def zapDir      = config.zapDir      ?: "zap"
+    def targetIp     = config.targetIp     ?: "98.92.250.177"
+    def targetPort   = config.targetPort   ?: "8081"
+    def targetUrl    = config.targetUrl    ?: "http://${targetIp}:${targetPort}/"
+    def zapPort      = config.zapPort      ?: "9000"
+    def zapApiKey    = config.zapApiKey    ?: "attendancekey"
+    def reportDir    = config.reportDir    ?: "zap-reports"
+    def zapDir       = config.zapDir       ?: "zap"
     def slackChannel = config.slackChannel ?: "#ci-operation-notifications"
 
     node {
@@ -15,7 +15,7 @@ def call(Map config = [:]) {
 
           
             // SETUP
-  
+       
 
             stage('Clean Workspace') {
                 echo "Cleaning workspace..."
@@ -46,8 +46,9 @@ def call(Map config = [:]) {
                 """
             }
 
+      
             // ZAP DAEMON
-   
+     
 
             stage('Start ZAP') {
                 echo "Starting ZAP daemon..."
@@ -76,21 +77,35 @@ def call(Map config = [:]) {
                         -config api.key=${zapApiKey} \\
                         > zap.log 2>&1 &
 
-                    echo "Waiting for ZAP to initialize (60s)..."
-                    sleep 60
+                    echo "Waiting for ZAP to become ready..."
+                    MAX_WAIT=120
+                    WAITED=0
+                    until curl -s "http://127.0.0.1:${zapPort}/JSON/core/view/version/?apikey=${zapApiKey}" | grep -q 'version'; do
+                        if [ \$WAITED -ge \$MAX_WAIT ]; then
+                            echo "ERROR: ZAP did not start within \${MAX_WAIT}s"
+                            echo "---- ZAP LOG ----"
+                            cat zap.log || true
+                            exit 1
+                        fi
+                        echo "ZAP not ready yet... waiting 10s (waited \${WAITED}s so far)"
+                        sleep 10
+                        WAITED=\$((WAITED + 10))
+                    done
 
-                    echo "Verifying ZAP is up..."
-                    curl -s "http://127.0.0.1:${zapPort}/JSON/core/view/version/?apikey=${zapApiKey}" || true
+                    echo "ZAP is ready after \${WAITED}s"
+                    curl -s "http://127.0.0.1:${zapPort}/JSON/core/view/version/?apikey=${zapApiKey}"
                 """
             }
 
+           
             // SCANNING
-    
+          
 
             stage('Run Spider Scan') {
                 echo "Running Spider Scan on ${targetUrl}..."
                 sh """
-                    curl -s "http://127.0.0.1:${zapPort}/JSON/spider/action/scan/?url=${targetUrl}&apikey=${zapApiKey}"
+                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/spider/action/scan/?url=${targetUrl}&apikey=${zapApiKey}")
+                    echo "Spider scan response: \$RESPONSE"
                     echo "Spider scan triggered."
                 """
             }
@@ -121,11 +136,13 @@ def call(Map config = [:]) {
             stage('Run Active Scan') {
                 echo "Running Active Scan on ${targetUrl}..."
                 sh """
-                    curl -s "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}attendance/search/all&apikey=${zapApiKey}"
+                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}attendance/search/all&apikey=${zapApiKey}")
+                    echo "Active scan response: \$RESPONSE"
                     echo "Active scan triggered."
                 """
             }
 
+           
             // REPORT
             
 
@@ -133,9 +150,10 @@ def call(Map config = [:]) {
                 echo "Generating ZAP HTML report..."
                 sh """
                     mkdir -p ${reportDir}
-                    curl -s "http://127.0.0.1:${zapPort}/OTHER/core/other/htmlreport/?apikey=${zapApiKey}" \\
+                    curl -sf "http://127.0.0.1:${zapPort}/OTHER/core/other/htmlreport/?apikey=${zapApiKey}" \\
                         -o ${reportDir}/zap_attendance_report.html
                     echo "Report saved to ${reportDir}/zap_attendance_report.html"
+                    ls -lh ${reportDir}/
                 """
             }
 
@@ -151,7 +169,6 @@ def call(Map config = [:]) {
             currentBuild.result = 'FAILURE'
             echo "Pipeline failed: ${err}"
 
-            // ── Slack failure notification ────────────
             try {
                 slackSend(
                     channel: slackChannel,
@@ -174,13 +191,12 @@ def call(Map config = [:]) {
         } finally {
 
             stage('Post Actions') {
-                echo "Stopping ZAP process and cleaning up..."
+                echo "Stopping ZAP and cleaning up..."
                 sh """
                     pkill -f zap.sh || true
                     rm -rf ${zapDir} || true
                 """
 
-                // ── Slack success notification ────────────
                 if (currentBuild.result != 'FAILURE') {
                     try {
                         slackSend(
