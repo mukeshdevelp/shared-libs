@@ -3,7 +3,7 @@ def call(Map config = [:]) {
     def gitRepo       = config.gitRepo ?: "https://github.com/OT-MICROSERVICES/frontend.git"
     def gitBranch     = config.gitBranch ?: "main"
     def slackChannel  = config.slackChannel ?: "#ci-operation-notifications"
-    
+    def color = currentBuild.currentResult == 'SUCCESS' ? 'good' : 'danger'
     def nodeTool      = config.nodeTool ?: "node-25"
 
     pipeline {
@@ -64,7 +64,7 @@ def call(Map config = [:]) {
                         step([
                             $class: 'SlackSendStep',
                             channel: slackChannel,
-                            color: color,
+                            color: color, 
                             message: """\
                             Jest Unit Testing
                             *Job:* ${env.JOB_NAME}
