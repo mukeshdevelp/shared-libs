@@ -10,7 +10,10 @@ def call(Map config = [:]) {
     def slackChannel = config.slackChannel ?: "#ci-operation-notifications"
 
     node {
+        def javaHome = tool name: 'jdk17', type: 'jdk'
 
+        env.JAVA_HOME = javaHome
+        env.PATH = "${javaHome}/bin:${env.PATH}"
         try {
 
           
@@ -21,28 +24,18 @@ def call(Map config = [:]) {
                 echo "Cleaning workspace..."
                 cleanWs()
             }
-
-            stage('Setup Java 17') {
-                echo "Downloading Java 17..."
+            
+            stage('Verify Java') {
                 sh '''
-                    mkdir -p java
-                    cd java
-                    wget -q https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.12+7/OpenJDK17U-jdk_x64_linux_hotspot_17.0.12_7.tar.gz
-                    tar -xzf OpenJDK17U-jdk_x64_linux_hotspot_17.0.12_7.tar.gz
-                    echo "Java 17 extracted successfully"
-                    ls -l
+                    echo "JAVA_HOME: $JAVA_HOME"
+                    java -version
                 '''
             }
 
-            stage('Download OWASP ZAP') {
+            stage('check ZAP Installation') {
                 echo "Downloading OWASP ZAP..."
                 sh """
-                    mkdir -p ${zapDir}
-                    cd ${zapDir}
-                    wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.17.0/ZAP_2.17.0_Linux.tar.gz
-                    tar -xzf ZAP_2.17.0_Linux.tar.gz
-                    echo "ZAP extracted successfully"
-                    ls -l
+                    zap --version
                 """
             }
 
