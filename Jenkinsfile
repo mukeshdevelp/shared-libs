@@ -3,6 +3,6 @@
 @Library('my-shared-lib') _
 
 runUnitTests(
-    repoUrl: "https://github.com/mukeshdevelp/ot-microservice-sarthi.git",
+    repoUrl: "https://github.com/OT-MICROSERVICES/salary-api.git",
     branch: 'backend'
 )

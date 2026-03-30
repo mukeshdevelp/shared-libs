@@ -1,6 +1,6 @@
 def call(Map config = [:]) {
 
-    def repoUrl = config.repoUrl ?: "https://github.com/mukeshdevelp/ot-microservice-sarthi.git"
+    def repoUrl = config.repoUrl ?: "https://github.com/OT-MICROSERVICES/salary-api.git"
     def branch  = config.branch ?: "backend"
 
     pipeline {
@@ -34,7 +34,7 @@ def call(Map config = [:]) {
                 steps {
                     dir('salary/salary-api') {
                         sh 'pwd'
-                        sh 'mvn clean test -Dspring.profiles.active=test'
+                        sh 'mvn clean test'
                     }
                     echo "Unit Tests Completed"
                 }
