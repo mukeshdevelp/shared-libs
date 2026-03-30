@@ -32,22 +32,25 @@ def call(Map config = [:]) {
 
             stage('Run Unit Tests') {
                 steps {
-                    sh 'cd salary/salary-api'
-                    sh 'pwd'
-                    sh 'mvn clean test'
+                    dir('salary/salary-api') {
+                        sh 'pwd'
+                        sh 'mvn clean test'
+                    }
                     echo "Unit Tests Completed"
                 }
             }
 
             stage('Generate Test Report') {
                 steps {
-                    sh 'mvn surefire-report:report'
+                    dir('salary/salary-api') {
+                        sh 'mvn surefire-report:report'
+                    }
                 }
             }
 
             stage('Archive Reports') {
                 steps {
-                    archiveArtifacts artifacts: 'target/site/**', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'salary/salary-api/target/site/**', allowEmptyArchive: true
                 }
             }
         }
