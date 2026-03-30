@@ -18,6 +18,8 @@ def call(Map config = [:]) {
             stage('Checkout & Install') {
                 steps {
                     git branch: "${gitBranch}", url: "${gitRepo}"
+                    sh 'pwd'
+                    sh 'ls -al'
                     sh 'npm install'
                 }
             }
