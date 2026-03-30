@@ -1,6 +1,6 @@
 def call(Map config = [:]) {
 
-    def targetIp     = config.targetIp     ?: "98.92.250.177"
+    def targetIp     = config.targetIp     ?: "3.235.197.134"
     def targetPort   = config.targetPort   ?: "8081"
     def targetUrl    = config.targetUrl    ?: "http://${targetIp}:${targetPort}/"
     def zapPort      = config.zapPort      ?: "9000"
@@ -151,10 +151,10 @@ def call(Map config = [:]) {
             stage('Access Target Endpoints') {
                 echo "Registering API endpoints with ZAP proxy..."
                 sh """
-                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl} || true
+                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance || true
 
                     curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/search/all || true
-                    curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}/api/v1/attendance/search?id=101" || true
+                    curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}/api/v1/attendance/search?id=456" || true
                     curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}/api/v1/attendance/search?id=786" || true
 
                     curl -s -X POST -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/create \\
