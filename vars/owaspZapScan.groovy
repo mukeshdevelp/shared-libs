@@ -97,7 +97,22 @@ def call(Map config = [:]) {
                 """
             }
 
-           
+            stage('Configure ZAP Timeout') {
+                echo "Increasing ZAP connection and read timeouts..."
+                sh """
+                    # Set connection timeout to 60 seconds (value in seconds)
+                    curl -sf "http://127.0.0.1:${zapPort}/JSON/core/action/setOptionTimeoutInSecs/?Integer=60&apikey=${zapApiKey}"
+                    echo "Connection timeout set to 60s"
+
+                    # Set read timeout to 120 seconds
+                    curl -sf "http://127.0.0.1:${zapPort}/JSON/network/action/setConnectionTimeout/?timeout=120&apikey=${zapApiKey}" || true
+                    curl -sf "http://127.0.0.1:${zapPort}/JSON/network/action/setReadTimeout/?timeout=120&apikey=${zapApiKey}" || true
+                    echo "Read timeout set to 120s"
+
+                    # Verify settings
+                    curl -sf "http://127.0.0.1:${zapPort}/JSON/core/view/optionTimeoutInSecs/?apikey=${zapApiKey}" || true
+                """
+            }
             // SCANNING
           
 
