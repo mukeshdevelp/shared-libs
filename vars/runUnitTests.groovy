@@ -1,7 +1,7 @@
 def call(Map config = [:]) {
 
-    def repoUrl = config.repoUrl ?: "https://github.com/OT-MICROSERVICES/salary-api.git"
-    def branch  = config.branch ?: "main"
+    def repoUrl = config.repoUrl ?: "https://github.com/mukeshdevelp/ot-microservice-sarthi.git"
+    def branch  = config.branch ?: "backend"
 
     pipeline {
         agent any
@@ -32,7 +32,10 @@ def call(Map config = [:]) {
 
             stage('Run Unit Tests') {
                 steps {
+                    sh 'cd salary/salary-api'
+                    sh 'pwd'
                     sh 'mvn clean test'
+                    echo "Unit Tests Completed"
                 }
             }
 
