@@ -1,7 +1,7 @@
 def call(Map config = [:]) {
 
     def repoUrl = config.repoUrl ?: "https://github.com/OT-MICROSERVICES/salary-api.git"
-    def branch  = config.branch ?: "backend"
+    def branch  = config.branch ?: "main"
 
     pipeline {
         agent any
@@ -32,26 +32,22 @@ def call(Map config = [:]) {
 
             stage('Run Unit Tests') {
                 steps {
-                    dir('salary/') {
-                        sh 'pwd'
-                        sh 'ls -la'
-                        sh 'mvn clean test'
-                    }
+                    sh 'pwd'
+                    sh 'ls -la'
+                    sh 'mvn clean test'
                     echo "Unit Tests Completed"
                 }
             }
 
             stage('Generate Test Report') {
                 steps {
-                    dir('salary/') {
-                        sh 'mvn surefire-report:report'
-                    }
+                    sh 'mvn surefire-report:report'
                 }
             }
 
             stage('Archive Reports') {
                 steps {
-                    archiveArtifacts artifacts: 'salary/target/site/**', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'target/site/**', allowEmptyArchive: true
                 }
             }
         }
