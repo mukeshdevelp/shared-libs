@@ -1,0 +1,10 @@
+@Library('mukesh_ut_java') _
+
+owaspZapScan(
+    targetIp:     "98.92.250.177",
+    targetPort:   "8081",
+    zapPort:      "9000",
+    zapApiKey:    "attendancekey",
+    reportDir:    "zap-reports",
+    slackChannel: "#ci-operation-notifications"
+)
