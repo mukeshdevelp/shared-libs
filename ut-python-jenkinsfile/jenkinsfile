@@ -1,0 +1,10 @@
+@Library('mukesh_ut_java') _
+
+pythonUnitTest(
+    repoUrl:         "https://github.com/mukeshdevelp/ot-microservice-sarthi.git",
+    branch:          "backend",
+    reportDir:       "reports",
+    attendanceDir:   "attendance/attendance_api",
+    notificationDir: "notification/notification-worker",
+    slackChannel:    "#ci-operation-notifications"
+)
