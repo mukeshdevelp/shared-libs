@@ -34,30 +34,51 @@ def call(Map config = [:]) {
                 steps {
                     sh 'pwd'
                     sh 'ls -la'
-                    sh 'mvn clean test'
-                    echo "Unit Tests Completed"
+                    script {
+                        // Build continues even if tests fail - marked UNSTABLE
+                        def result = sh(
+                            script: 'mvn clean test -Dmaven.test.failure.ignore=true',
+                            returnStatus: true
+                        )
+                        if (result != 0) {
+                            currentBuild.result = 'UNSTABLE'
+                            echo "Some tests failed - marking build as UNSTABLE"
+                        }
+                    }
+                    echo "Unit Tests Stage Completed"
                 }
             }
 
             stage('Generate Test Report') {
                 steps {
-                    sh 'mvn surefire-report:report'
+                    sh 'mvn surefire-report:report -Dmaven.test.failure.ignore=true'
+                }
+            }
+
+            stage('Publish Test Results') {
+                steps {
+                    junit testResults: 'target/surefire-reports/*.xml',
+                          allowEmptyResults: true
                 }
             }
 
             stage('Archive Reports') {
                 steps {
-                    archiveArtifacts artifacts: 'target/site/**', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'target/site/**',
+                                     allowEmptyArchive: true
                 }
             }
         }
 
         post {
             success {
-                echo "Unit Tests Passed Successfully"
+                echo "All Unit Tests Passed Successfully"
+            }
+            unstable {
+                echo "Some Unit Tests Failed - Build is UNSTABLE"
             }
             failure {
-                echo "Unit Tests Failed"
+                echo "Pipeline Failed"
             }
             always {
                 cleanWs()
