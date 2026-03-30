@@ -32,7 +32,7 @@ def call(Map config = [:]) {
 
             stage('Run Unit Tests') {
                 steps {
-                    dir('salary/salary-api') {
+                    dir('salary/') {
                         sh 'pwd'
                         sh 'ls -la'
                         sh 'mvn clean test'
@@ -43,7 +43,7 @@ def call(Map config = [:]) {
 
             stage('Generate Test Report') {
                 steps {
-                    dir('salary/salary-api') {
+                    dir('salary/') {
                         sh 'mvn surefire-report:report'
                     }
                 }
@@ -51,7 +51,7 @@ def call(Map config = [:]) {
 
             stage('Archive Reports') {
                 steps {
-                    archiveArtifacts artifacts: 'salary/salary-api/target/site/**', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'salary/target/site/**', allowEmptyArchive: true
                 }
             }
         }
