@@ -1,4 +1,4 @@
-@Library('mukesh_ut_java') _
+@Library('mukesh_dast_pyhton') _
 
 owaspZapScan(
     targetIp:     "98.92.250.177",
