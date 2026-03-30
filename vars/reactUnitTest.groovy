@@ -23,6 +23,8 @@ def call(Map config = [:]) {
 
             stage('Install Dependencies') {
                 steps {
+                    sh 'npm --version'
+                    sh 'node --version'
                     sh 'npm install'
                 }
             }
