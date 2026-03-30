@@ -52,39 +52,28 @@ def call(Map config = [:]) {
         post {
             always {
                 script {
-                    def status = currentBuild.currentResult
+                    
 
-                    def colorMap = [
-                        "SUCCESS" : "good",
-                        "UNSTABLE": "warning",
-                        "FAILURE" : "danger"
-                    ]
-
-                    def emojiMap = [
-                        "SUCCESS" : "",
-                        "UNSTABLE": "",
-                        "FAILURE" : ""
-                    ]
-
-                    def emoji = emojiMap.get(status, "")
-                    def color = colorMap.get(status, "danger")
+                    
 
                     try {
-                        slackSend(
-                            tokenCredentialId: slackCredId,
+                        step([
+                            $class: 'SlackSendStep',
                             channel: slackChannel,
                             color: color,
                             message: """\
-${emoji} *${status}* - Jest Unit Testing
-*Job:* ${env.JOB_NAME}
-*Build:* #${env.BUILD_NUMBER}
-*Branch:* ${gitBranch}
-*URL:* ${env.BUILD_URL}"""
-                        )
+                            Jest Unit Testing
+                            *Job:* ${env.JOB_NAME}
+                            *Build:* #${env.BUILD_NUMBER}
+                            *Branch:* ${gitBranch}
+                            *URL:* ${env.BUILD_URL}"""
+                        ])
                     } catch (Exception e) {
-                        echo "Slack not configured: ${e.getMessage()}"
+                        echo "Slack plugin not installed, skipping notification"
                     }
                 }
+
+                archiveArtifacts artifacts: 'file.txt', fingerprint: true, allowEmptyArchive: true
 
                 cleanWs()
             }
