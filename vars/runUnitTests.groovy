@@ -69,7 +69,7 @@ def call(Map config = [:]) {
                 }
             }
         }
-
+// addd notification in post section
         post {
             success {
                 echo "All Unit Tests Passed Successfully"
