@@ -4,7 +4,7 @@ def call(Map config = [:]) {
     def gitBranch     = config.gitBranch ?: "main"
     def slackChannel  = config.slackChannel ?: "#ci-operation-notifications"
     def slackCredId   = config.slackCredId ?: "Shreyas-Slack"
-    def nodeTool      = config.nodeTool ?: "node-16"
+    def nodeTool      = config.nodeTool ?: "node-25"
 
     pipeline {
         agent any
@@ -15,18 +15,36 @@ def call(Map config = [:]) {
 
         stages {
 
-            stage('Checkout & Install') {
+            stage('Checkout') {
                 steps {
                     git branch: "${gitBranch}", url: "${gitRepo}"
-                    sh 'pwd'
-                    sh 'ls -al'
+                }
+            }
+
+            stage('Install Dependencies') {
+                steps {
                     sh 'npm install'
                 }
             }
 
-            stage('Unit Testing (Jest)') {
+            stage('Install Jest (if not present)') {
                 steps {
-                    sh 'npm test -- --coverage --passWithNoTests || true'
+                    sh '''
+                        if ! npm list jest > /dev/null 2>&1; then
+                            echo "Installing Jest..."
+                            npm install --save-dev jest
+                        else
+                            echo "Jest already installed"
+                        fi
+                    '''
+                }
+            }
+
+            stage('Run Unit Tests (Jest Directly)') {
+                steps {
+                    sh '''
+                        npx jest --coverage --passWithNoTests > file.txt
+                    '''
                 }
             }
         }
@@ -51,7 +69,21 @@ def call(Map config = [:]) {
                     def emoji = emojiMap.get(status, "")
                     def color = colorMap.get(status, "danger")
 
-                    
+                    try {
+                        slackSend(
+                            tokenCredentialId: slackCredId,
+                            channel: slackChannel,
+                            color: color,
+                            message: """\
+${emoji} *${status}* - Jest Unit Testing
+*Job:* ${env.JOB_NAME}
+*Build:* #${env.BUILD_NUMBER}
+*Branch:* ${gitBranch}
+*URL:* ${env.BUILD_URL}"""
+                        )
+                    } catch (Exception e) {
+                        echo "Slack not configured: ${e.getMessage()}"
+                    }
                 }
 
                 cleanWs()
