@@ -62,7 +62,7 @@ def call(Map config = [:]) {
 
                     try {
                         step([
-                            
+                            $class: 'SlackSendStep',
                             channel: slackChannel,
                             color: color,
                             message: """\
