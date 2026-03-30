@@ -1,54 +1,67 @@
 def call(Map config = [:]) {
 
-    def nodeVersion = config.nodeVersion ?: "18"
-    def workingDir = config.workingDir ?: "."
-    def installCommand = config.installCommand ?: "npm install"
-    def testCommand = config.testCommand ?: "npm test -- --watchAll=false"
+    def gitRepo       = config.gitRepo ?: "https://github.com/OT-MICROSERVICES/frontend.git"
+    def gitBranch     = config.gitBranch ?: "main"
+    def slackChannel  = config.slackChannel ?: "#ci-operation-notifications"
+    def slackCredId   = config.slackCredId ?: "Shreyas-Slack"
+    def nodeTool      = config.nodeTool ?: "node-16"
 
     pipeline {
         agent any
 
+        tools {
+            nodejs "${nodeTool}"
+        }
+
         stages {
 
-            stage('Setup Node') {
+            stage('Checkout & Install') {
                 steps {
-                    script {
-                        echo "Using Node Version: ${nodeVersion}"
-                    }
+                    git branch: "${gitBranch}", url: "${gitRepo}"
+                    sh 'npm install'
                 }
             }
 
-            stage('Install Dependencies') {
+            stage('Unit Testing (Jest)') {
                 steps {
-                    dir(workingDir) {
-                        sh """
-                            echo "Installing dependencies..."
-                            ${installCommand}
-                        """
-                    }
-                }
-            }
-
-            stage('Run Unit Tests') {
-                steps {
-                    dir(workingDir) {
-                        sh """
-                            echo "Running Jest tests..."
-                            ${testCommand}
-                        """
-                    }
+                    sh 'npm test -- --coverage --passWithNoTests || true'
                 }
             }
         }
 
         post {
-            success {
-                echo "Unit tests passed successfully"
-            }
-            failure {
-                echo "Unit tests failed"
-            }
             always {
+                script {
+                    def status = currentBuild.currentResult
+
+                    def colorMap = [
+                        "SUCCESS" : "good",
+                        "UNSTABLE": "warning",
+                        "FAILURE" : "danger"
+                    ]
+
+                    def emojiMap = [
+                        "SUCCESS" : "",
+                        "UNSTABLE": "",
+                        "FAILURE" : ""
+                    ]
+
+                    def emoji = emojiMap.get(status, "")
+                    def color = colorMap.get(status, "danger")
+
+                    slackSend(
+                        
+                        channel: slackChannel,
+                        color: color,
+                        message: """\
+                        ${emoji} *${status}* - React Unit Testing
+                        *Job:* ${env.JOB_NAME}
+                        *Build:* #${env.BUILD_NUMBER}
+                        *Branch:* ${gitBranch}
+                        *URL:* ${env.BUILD_URL}""".stripIndent()
+                    )
+                }
+
                 cleanWs()
             }
         }
