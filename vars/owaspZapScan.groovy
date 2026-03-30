@@ -104,7 +104,7 @@ def call(Map config = [:]) {
             stage('Run Spider Scan') {
                 echo "Running Spider Scan on ${targetUrl}..."
                 sh """
-                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/spider/action/scan/?url=${targetUrl}&apikey=${zapApiKey}")
+                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/spider/action/scan/?url=${targetUrl}/api/v1/attendance&apikey=${zapApiKey}")
                     echo "Spider scan response: \$RESPONSE"
                     echo "Spider scan triggered."
                 """
@@ -115,19 +115,21 @@ def call(Map config = [:]) {
                 sh """
                     curl -s -x http://127.0.0.1:${zapPort} ${targetUrl} || true
 
-                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}attendance/search/all || true
-                    curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}attendance/search?id=1" || true
-                    curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}attendance/search?id=2" || true
+                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/search/all || true
+                    curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}/api/v1/attendance/search?id=1" || true
+                    curl -s -x http://127.0.0.1:${zapPort} "${targetUrl}/api/v1/attendance/search?id=2" || true
 
-                    curl -s -X POST -x http://127.0.0.1:${zapPort} ${targetUrl}attendance/create \\
+                    curl -s -X POST -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/create \\
                         -H "Content-Type: application/json" \\
                         -d '{"name":"test","status":"present"}' || true
 
-                    curl -s -X PUT -x http://127.0.0.1:${zapPort} ${targetUrl}attendance/update \\
+                    curl -s -X PUT -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/update \\
                         -H "Content-Type: application/json" \\
                         -d '{"id":1,"status":"absent"}' || true
 
-                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}attendance/test || true
+                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/test || true
+                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/health || true
+                    curl -s -x http://127.0.0.1:${zapPort} ${targetUrl}/api/v1/attendance/health/details || true
 
                     echo "All endpoints registered with ZAP."
                 """
@@ -136,7 +138,7 @@ def call(Map config = [:]) {
             stage('Run Active Scan') {
                 echo "Running Active Scan on ${targetUrl}..."
                 sh """
-                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}attendance/search/all&apikey=${zapApiKey}")
+                    RESPONSE=\$(curl -sf "http://127.0.0.1:${zapPort}/JSON/ascan/action/scan/?url=${targetUrl}/api/v1/attendance/search/all&apikey=${zapApiKey}")
                     echo "Active scan response: \$RESPONSE"
                     echo "Active scan triggered."
                 """
