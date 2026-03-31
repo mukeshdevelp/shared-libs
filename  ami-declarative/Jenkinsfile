@@ -1,0 +1,175 @@
+pipeline {
+    agent any
+
+    environment {
+        AMI_ID          = "ami-0ee5e6f2f964f34e5"
+        INSTANCE_TYPE   = "t2.micro"
+        KEY_NAME        = "ot_micro_service"
+        PEM_FILE        = "/var/lib/jenkins/ot_micro_service.pem"
+        REGION          = "ap-south-1"
+        SECURITY_GROUP  = "sg-04bcfb0bec44ad33e"
+        SUBNET_ID       = "subnet-0ce4198e3ed718046"
+        TRIVY_REPORT    = "trivy-report.json"
+        SLACK_CHANNEL   = "#ci-operation-notifications"
+    }
+
+    stages {
+
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Launch EC2') {
+            steps {
+                script {
+                    echo "Launching EC2..."
+                    env.INSTANCE_ID = sh(
+                        script: """
+                            aws ec2 run-instances \
+                            --image-id ${env.AMI_ID} \
+                            --instance-type ${env.INSTANCE_TYPE} \
+                            --key-name ${env.KEY_NAME} \
+                            --security-group-ids ${env.SECURITY_GROUP} \
+                            --subnet-id ${env.SUBNET_ID} \
+                            --associate-public-ip-address \
+                            --query 'Instances[0].InstanceId' \
+                            --output text \
+                            --region ${env.REGION}
+                        """,
+                        returnStdout: true
+                    ).trim()
+                    echo "Instance ID: ${env.INSTANCE_ID}"
+                }
+            }
+        }
+
+        stage('Wait for Instance') {
+            steps {
+                sh """
+                    aws ec2 wait instance-running \
+                    --instance-ids ${env.INSTANCE_ID} \
+                    --region ${env.REGION}
+                """
+            }
+        }
+
+        stage('Get Public IP') {
+            steps {
+                script {
+                    env.PUBLIC_IP = sh(
+                        script: """
+                            aws ec2 describe-instances \
+                            --instance-ids ${env.INSTANCE_ID} \
+                            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+                            --output text \
+                            --region ${env.REGION}
+                        """,
+                        returnStdout: true
+                    ).trim()
+                    echo "Public IP: ${env.PUBLIC_IP}"
+                }
+            }
+        }
+
+        stage('Wait for SSH') {
+            steps {
+                echo "Waiting for SSH to be ready..."
+                sleep 60
+            }
+        }
+
+        stage('SSH Check') {
+            steps {
+                retry(5) {
+                    sh """
+                        ssh -i ${env.PEM_FILE} \
+                        -o StrictHostKeyChecking=no \
+                        -o ConnectTimeout=10 \
+                        ubuntu@${env.PUBLIC_IP} \
+                        "echo Connected"
+                    """
+                }
+            }
+        }
+
+        stage('AMI Scan') {
+            steps {
+                // Run Trivy on EC2 and save JSON report remotely
+                sh """
+                    ssh -i ${env.PEM_FILE} \
+                    -o StrictHostKeyChecking=no \
+                    ubuntu@${env.PUBLIC_IP} "
+                        echo 'Running Trivy Scan...'
+                        trivy fs / \
+                        --scanners vuln \
+                        --timeout 10m \
+                        --skip-dirs /var,/usr,/lib \
+                        --severity HIGH,CRITICAL \
+                        --format json \
+                        --output /tmp/${env.TRIVY_REPORT} \
+                        --exit-code 0 \
+                        --skip-db-update
+                    "
+                """
+
+                // Copy report from EC2 to Jenkins workspace
+                sh """
+                    scp -i ${env.PEM_FILE} \
+                    -o StrictHostKeyChecking=no \
+                    ubuntu@${env.PUBLIC_IP}:/tmp/${env.TRIVY_REPORT} \
+                    ${env.WORKSPACE}/${env.TRIVY_REPORT}
+                """
+            }
+        }
+
+    }
+
+    post {
+        always {
+            script {
+                // ── Terminate EC2 ─────────────────────────────────────
+                if (env.INSTANCE_ID) {
+                    echo "Terminating EC2 instance: ${env.INSTANCE_ID}"
+                    sh """
+                        aws ec2 terminate-instances \
+                        --instance-ids ${env.INSTANCE_ID} \
+                        --region ${env.REGION}
+                    """
+                } else {
+                    echo "No EC2 instance to terminate."
+                }
+            }
+
+            // ── Archive Trivy Report (always, at the very end) ────────
+            archiveArtifacts artifacts: "${env.TRIVY_REPORT}",
+                             allowEmptyArchive: true,
+                             fingerprint: true
+        }
+
+        success {
+            slackSend(
+                channel: "${env.SLACK_CHANNEL}",
+                tokenCredentialId: "slack-jenkins-credential",   // Jenkins credential ID
+                color: "good",
+                message: """
+                *AMI Scan Pipeline — SUCCESS*
+                ...
+                """.stripIndent()
+            )
+        }
+
+        failure {
+            slackSend(
+                channel: "${env.SLACK_CHANNEL}",
+                tokenCredentialId: "slack-jenkins-credential",   // Jenkins credential ID
+                color: "danger",
+                message: """
+                *AMI Scan Pipeline — FAILED*
+                ...
+                """.stripIndent()
+            )
+        }
+    }
+}
