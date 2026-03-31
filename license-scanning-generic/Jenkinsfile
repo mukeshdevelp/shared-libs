@@ -1,0 +1,17 @@
+@Library('license-scan-shared') _   
+pipeline {
+    agent any
+
+    stages {
+        stage('License Scanning') {
+            steps {
+                script {
+                    licenseScanning(
+                        reportDir    : 'reports',
+                        slackChannel : '#ci-operation-notifications'
+                    )
+                }
+            }
+        }
+    }
+}
