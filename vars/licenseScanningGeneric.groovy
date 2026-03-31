@@ -28,8 +28,8 @@ def call(Map config = [:]) {
 
                 trivy fs \
                 --scanners license \
-                --format sarif \
-                --output ${REPORT_DIR}/trivy-license-report.sarif \
+                --format json \
+                --output ${REPORT_DIR}/trivy-license-report.json \
                 .
                 """
             }
