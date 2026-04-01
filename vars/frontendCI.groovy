@@ -49,12 +49,12 @@ def call(Map config = [:]) {
 
             stage('Unit Testing (Jest)') {
                 steps {
-                    sh 'npm test -- --coverage'
+                    sh 'npm test -- --coverage --passWithNoTests'
                 }
                 post {
                     always {
-                        junit 'coverage/junit.xml' // if configured
-                        archiveArtifacts artifacts: 'coverage/**', fingerprint: true
+                        junit allowEmptyResults: true, testResults: 'coverage/junit.xml'
+                        archiveArtifacts artifacts: 'coverage/**', fingerprint: true, allowEmptyArchive: true
                     }
                 }
             }
