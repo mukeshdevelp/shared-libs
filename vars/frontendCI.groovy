@@ -27,7 +27,7 @@ def call(Map config = [:]) {
 
             stage('Install Dependencies') {
                 steps {
-                    sh 'npm install'
+                    sh 'npm install --verbose'
                 }
             }
 
