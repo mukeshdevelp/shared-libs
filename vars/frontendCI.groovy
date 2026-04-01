@@ -110,10 +110,36 @@ def call(Map config = [:]) {
         post {
             success {
                 echo "CI Pipeline Passed"
+
+                slackSend(
+                    channel: '#ci-operation-notifications',
+                    color: 'good',
+                    message: """
+                    *Build Success*
+
+                    *Job:* ${env.JOB_NAME}
+                    *Build:* #${env.BUILD_NUMBER}
+                    *URL:* ${env.BUILD_URL}
+                    """
+                )
             }
+
             failure {
                 echo "CI Pipeline Failed"
+
+                slackSend(
+                    channel: '#ci-operation-notifications',
+                    color: 'danger',
+                    message: """
+                    *Build Failed*
+
+                    *Job:* ${env.JOB_NAME}
+                    *Build:* #${env.BUILD_NUMBER}
+                    *URL:* ${env.BUILD_URL}
+                    """
+                )
             }
+
             always {
                 cleanWs()
             }
