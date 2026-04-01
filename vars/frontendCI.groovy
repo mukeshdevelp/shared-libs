@@ -61,14 +61,15 @@ def call(Map config = [:]) {
 
             stage('SonarQube Analysis (Bugs + SAST)') {
                 steps {
-                   
-                        withEnv(["PATH+SONAR=${scannerHome}/bin"]) {
-                        sh '''
-                            sonar-scanner \
-                            -Dsonar.projectKey=${projectKey} \
-                            -Dsonar.sources=. \
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-                        '''
+                        script {
+                            withEnv(["PATH+SONAR=${scannerHome}/bin"]) {
+                            sh '''
+                                sonar-scanner \
+                                -Dsonar.projectKey=${projectKey} \
+                                -Dsonar.sources=. \
+                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                            '''
+                        }
                     }
                 }
             }
