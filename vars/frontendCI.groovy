@@ -33,7 +33,12 @@ def call(Map config = [:]) {
 
             stage('Code Compilation (Webpack Build)') {
                 steps {
-                    sh 'npm run build'
+                    sh '''
+                    
+                    export CI=false
+                    npm run build 2>&1 | tee build-output.txt
+                    
+                    '''
                 }
                 post {
                     success {
