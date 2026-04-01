@@ -6,6 +6,7 @@ def call(Map config = [:]) {
     def sonarProject  = config.sonarProject ?: "frontend-ci-checks"
     def sonarName     = config.sonarName ?: "frontend-ci-checks"
     def projectKey     = config.projectKey ?: "frontend-ci-checks"
+    def scannerHome = tool 'sonar-scanner'  // Name from Jenkins Global Tool Config
     pipeline {
         agent any
 
@@ -60,8 +61,7 @@ def call(Map config = [:]) {
 
             stage('SonarQube Analysis (Bugs + SAST)') {
                 steps {
-                    def scannerHome = tool 'sonar-scanner'  // Name from Jenkins Global Tool Config
-
+                   
                         withEnv(["PATH+SONAR=${scannerHome}/bin"]) {
                         sh '''
                             sonar-scanner \
