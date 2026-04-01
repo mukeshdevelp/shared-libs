@@ -60,13 +60,14 @@ def call(Map config = [:]) {
 
             stage('SonarQube Analysis (Bugs + SAST)') {
                 steps {
-                    withSonarQubeEnv('sonarqube-server') {
+                    def scannerHome = tool 'sonar-scanner'  // Name from Jenkins Global Tool Config
+
+                        withEnv(["PATH+SONAR=${scannerHome}/bin"]) {
                         sh '''
-                        sonar-scanner \
-                        -Dsonar.projectKey=${projectKey} \
-                        -Dsonar.sources=. \
-                        
-                        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                            sonar-scanner \
+                            -Dsonar.projectKey=${projectKey} \
+                            -Dsonar.sources=. \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
                         '''
                     }
                 }
