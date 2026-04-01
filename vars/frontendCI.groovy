@@ -6,7 +6,7 @@ def call(Map config = [:]) {
     def sonarProject  = config.sonarProject ?: "frontend-ci-checks"
     def sonarName     = config.sonarName ?: "frontend-ci-checks"
     def projectKey     = config.projectKey ?: "frontend-ci-checks"
-    def scannerHome = tool 'sonar-scanner'  // Name from Jenkins Global Tool Config
+    def scannerHome = tool 'sonar-scanner'  // Jenkins Global Tool Config
     pipeline {
         agent any
 
