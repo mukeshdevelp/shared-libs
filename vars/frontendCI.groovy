@@ -5,7 +5,7 @@ def call(Map config = [:]) {
     def nodeTool      = config.nodeTool ?: "node-16"
     def sonarProject  = config.sonarProject ?: "frontend-app"
     def sonarName     = config.sonarName ?: "Frontend App"
-
+    def projectKey     = config.projectKey ?: "frontend-ci-checks"
     pipeline {
         agent any
 
@@ -56,15 +56,14 @@ def call(Map config = [:]) {
 
             stage('SonarQube Analysis (Bugs + SAST)') {
                 steps {
-                    withSonarQubeEnv("${SONARQUBE_ENV}") {
-                        sh """
+                    withSonarQubeEnv('sonarqube-server') {
+                        sh '''
                         sonar-scanner \
-                          -Dsonar.projectKey=${sonarProject} \
-                          -Dsonar.projectName='${sonarName}' \
-                          -Dsonar.sources=. \
-                          -Dsonar.exclusions=**/node_modules/** \
-                          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-                        """
+                        -Dsonar.projectKey=${projectKey} \
+                        -Dsonar.sources=. \
+                        -Dsonar.login=$SONAR_AUTH_TOKEN \
+                        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                        '''
                     }
                 }
             }
