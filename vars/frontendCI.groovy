@@ -1,21 +1,15 @@
 def call(Map config = [:]) {
 
-    def gitRepo       = config.gitRepo ?: "https://github.com/OT-MICROSERVICES/frontend.git"
-    def gitBranch     = config.gitBranch ?: "main"
-    def nodeTool      = config.nodeTool ?: "node-16"
-    def sonarProject  = config.sonarProject ?: "frontend-ci-checks"
-    def sonarName     = config.sonarName ?: "frontend-ci-checks"
-    def projectKey     = config.projectKey ?: "frontend-ci-checks"
-    def scannerHome = tool 'sonar-scanner'  // Jenkins Global Tool Config
+    def gitRepo    = config.gitRepo ?: "https://github.com/OT-MICROSERVICES/frontend.git"
+    def gitBranch  = config.gitBranch ?: "main"
+    def nodeTool   = config.nodeTool ?: "node-16"
+    def projectKey = config.projectKey ?: "frontend-ci-checks"
+
     pipeline {
         agent any
 
         tools {
             nodejs "${nodeTool}"
-        }
-
-        environment {
-            SONARQUBE_ENV = "sonarqube-server"
         }
 
         stages {
@@ -32,13 +26,11 @@ def call(Map config = [:]) {
                 }
             }
 
-            stage('Code Compilation (Webpack Build)') {
+            stage('Build (Webpack)') {
                 steps {
                     sh '''
-                    
-                    export CI=false
-                    npm run build 2>&1 | tee build-output.txt
-                    
+                        export CI=false
+                        npm run build 2>&1 | tee build-output.txt
                     '''
                 }
                 post {
@@ -50,25 +42,35 @@ def call(Map config = [:]) {
 
             stage('Unit Testing (Jest)') {
                 steps {
-                    sh 'npx jest --coverage --passWithNoTests > file.txt'
+                    sh 'npx jest --coverage --passWithNoTests > jest-output.txt'
                 }
                 post {
                     always {
-                        archiveArtifacts artifacts: 'file.txt', fingerprint: true
+                        archiveArtifacts artifacts: 'jest-output.txt', fingerprint: true
                     }
                 }
             }
 
-            stage('SonarQube Analysis (Bugs + SAST)') {
+            stage('SonarQube Analysis') {
                 steps {
-                        script {
+                    script {
+                        // MUST be inside steps/script (fix for your error)
+                        def scannerHome = tool 'sonar-scanner'
+
+                        withSonarQubeEnv('sonarqube-server') {
                             withEnv(["PATH+SONAR=${scannerHome}/bin"]) {
-                            sh '''
-                                sonar-scanner \
-                                -Dsonar.projectKey=${projectKey} \
-                                -Dsonar.sources=. \
-                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-                            '''
+
+                                // Debug (optional but useful)
+                                sh 'which sonar-scanner || echo "SONAR NOT FOUND"'
+                                sh 'ls -l coverage/lcov.info || echo "NO COVERAGE FILE"'
+
+                                sh """
+                                    sonar-scanner \
+                                    -Dsonar.projectKey=${projectKey} \
+                                    -Dsonar.sources=. \
+                                    -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                                """
+                            }
                         }
                     }
                 }
@@ -82,30 +84,25 @@ def call(Map config = [:]) {
                 }
             }
 
-            stage('Dependency Scanning (Trivy)') {
+            stage('Dependency Scan (Trivy)') {
                 steps {
                     sh '''
-                        # Run Trivy filesystem scan (JSON report)
                         trivy fs . \
-                            --skip-dirs node_modules \
-                            --format json \
-                            --output trivy-report.json \
-                            --exit-code 1 \
-                            --severity HIGH,CRITICAL
+                          --skip-dirs node_modules \
+                          --format json \
+                          --output trivy-report.json \
+                          --exit-code 1 \
+                          --severity HIGH,CRITICAL
 
-                        # Generate human-readable report
                         trivy fs . \
-                            --skip-dirs node_modules \
-                            --format table \
-                            --output trivy-report.txt
+                          --skip-dirs node_modules \
+                          --format table \
+                          --output trivy-report.txt
                     '''
                 }
                 post {
                     always {
                         archiveArtifacts artifacts: 'trivy-report.*', fingerprint: true
-                    }
-                    failure {
-                        echo "Trivy found HIGH/CRITICAL vulnerabilities"
                     }
                 }
             }
@@ -119,7 +116,6 @@ def call(Map config = [:]) {
                 echo "CI Pipeline Failed"
             }
             always {
-                archiveArtifacts artifacts: '*.log', allowEmptyArchive: true
                 cleanWs()
             }
         }
