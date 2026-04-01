@@ -49,12 +49,11 @@ def call(Map config = [:]) {
 
             stage('Unit Testing (Jest)') {
                 steps {
-                    sh 'npm test -- --coverage --passWithNoTests'
+                    sh 'npx jest --coverage --passWithNoTests > file.txt'
                 }
                 post {
                     always {
-                        junit allowEmptyResults: true, testResults: 'coverage/junit.xml'
-                        archiveArtifacts artifacts: 'coverage/**', fingerprint: true, allowEmptyArchive: true
+                        archiveArtifacts artifacts: 'file.txt', fingerprint: true
                     }
                 }
             }
