@@ -61,7 +61,7 @@ def call(Map config = [:]) {
                         sonar-scanner \
                         -Dsonar.projectKey=${projectKey} \
                         -Dsonar.sources=. \
-                        -Dsonar.login=$SONAR_AUTH_TOKEN \
+                        
                         -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
                         '''
                     }
