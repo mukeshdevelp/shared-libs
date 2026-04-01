@@ -42,7 +42,7 @@ def call(Map config = [:]) {
                 }
                 post {
                     success {
-                        archiveArtifacts artifacts: 'dist/**', fingerprint: true
+                        archiveArtifacts artifacts: 'build/**', fingerprint: true
                     }
                 }
             }
