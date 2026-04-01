@@ -1,0 +1,10 @@
+@Library('my-shared-library') _
+
+frontendCI(
+    gitRepo: "https://github.com/OT-MICROSERVICES/frontend.git",
+    gitBranch: "main",
+    nodeTool: "node-16",
+    sonarProject: "frontend-app",
+    sonarName: "Frontend App"
+
+)
