@@ -40,6 +40,10 @@ pipeline {
                         """,
                         returnStdout: true
                     ).trim()
+
+                    if (!env.INSTANCE_ID) {
+                        error("Failed to launch EC2 instance")
+                    }
                     echo "Instance ID: ${env.INSTANCE_ID}"
                 }
             }
@@ -113,6 +117,9 @@ pipeline {
                         --skip-db-update
                     "
                 """
+                if (scanStatus != 0) {
+                        error("Trivy detected HIGH/CRITICAL vulnerabilities.")
+                }
 
                 // Copy report from EC2 to Jenkins workspace
                 sh """
@@ -127,9 +134,9 @@ pipeline {
     }
 
     post {
+
         always {
             script {
-                // ── Terminate EC2 ─────────────────────────────────────
                 if (env.INSTANCE_ID) {
                     echo "Terminating EC2 instance: ${env.INSTANCE_ID}"
                     sh """
@@ -142,34 +149,54 @@ pipeline {
                 }
             }
 
-            // ── Archive Trivy Report (always, at the very end) ────────
             archiveArtifacts artifacts: "${env.TRIVY_REPORT}",
                              allowEmptyArchive: true,
                              fingerprint: true
         }
 
         success {
-            slackSend(
-                channel: "${env.SLACK_CHANNEL}",
-                tokenCredentialId: "slack-jenkins-credential",   // Jenkins credential ID
-                color: "good",
-                message: """
-                *AMI Scan Pipeline — SUCCESS*
-                ...
-                """.stripIndent()
-            )
+            script {
+                try {
+                    slackSend(
+                        channel: env.SLACK_CHANNEL,
+                        color: "good",
+                        message: """\
+                        AMI Scan Pipeline SUCCESS
+                        *Job:* ${env.JOB_NAME}
+                        *Build:* #${env.BUILD_NUMBER}
+                        *AMI:* ${env.AMI_ID}
+                        *Instance:* ${env.INSTANCE_ID}
+                        *Report:* ${env.BUILD_URL}artifact/${env.TRIVY_REPORT}
+                        *URL:* ${env.BUILD_URL}"""
+                    )
+                } catch (Exception e) {
+                    // added  failure handling
+                    echo "Slack notification failed: ${e.message}"
+                }
+            }
         }
 
         failure {
-            slackSend(
-                channel: "${env.SLACK_CHANNEL}",
-                tokenCredentialId: "slack-jenkins-credential",   // Jenkins credential ID
-                color: "danger",
-                message: """
-                *AMI Scan Pipeline — FAILED*
-                ...
-                """.stripIndent()
-            )
+            script {
+                try {
+                    slackSend(
+                        channel: env.SLACK_CHANNEL,
+                        color: "danger",
+                        message: """\
+                        AMI Scan Pipeline FAILED
+                        *Job:* ${env.JOB_NAME}
+                        *Build:* #${env.BUILD_NUMBER}
+                        *AMI:* ${env.AMI_ID}
+                        *Instance:* ${env.INSTANCE_ID ?: 'N/A'}
+                        *Logs:* ${env.BUILD_URL}console
+                        *URL:* ${env.BUILD_URL}"""
+                    )
+                } catch (Exception e) {
+                    echo "Slack notification failed: ${e.message}"
+                }
+            }
         }
     }
 }
+
+
