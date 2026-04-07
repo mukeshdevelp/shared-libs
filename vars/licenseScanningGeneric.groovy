@@ -41,7 +41,7 @@ def call(Map config = [:]) {
                 mkdir -p ${REPORT_DIR}
                 pwd
                 ls -al
-                cd salary-api
+                # removed salary-api cd
                 trivy fs . \
                 --scanners license \
                 --format json \
