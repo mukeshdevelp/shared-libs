@@ -39,8 +39,6 @@ def call(Map config = [:]) {
         stage('License Scan') {
             sh """
                 mkdir -p ${REPORT_DIR}
-                pwd
-                ls -al
                 trivy fs . \
                     --scanners license \
                     --format json \
@@ -55,18 +53,39 @@ def call(Map config = [:]) {
 
             echo "Total licenses detected: ${totalLicenses}"
 
+            // Define which categories should FAIL the build
+            def FORBIDDEN_CATEGORIES = ['restricted']
+
+            // Define which categories should WARN only
+            def WARN_CATEGORIES = ['reciprocal', 'unknown']
+
+            def violations = []
+            def warnings   = []
+
             report.Results?.each { result ->
                 result?.Licenses?.each { lic ->
-                    echo "  → [${lic.Category}] ${lic.PkgName}: ${lic.Name}"
+                    def cat = lic.Category?.toLowerCase()
+                    def entry = "[${lic.Category}] ${lic.PkgName}: ${lic.Name}"
+
+                    if (FORBIDDEN_CATEGORIES.contains(cat)) {
+                        violations << entry
+                    } else if (WARN_CATEGORIES.contains(cat)) {
+                        warnings << entry
+                    }
                 }
             }
 
-            def THRESHOLD = 10
+            if (warnings) {
+                echo "License Warnings (${warnings.size()}):"
+                warnings.each { echo "   WARN → ${it}" }
+            }
 
-            if (totalLicenses > THRESHOLD) {
-                error("License scan failed: Found ${totalLicenses} licenses, exceeds threshold of ${THRESHOLD}.")
+            if (violations) {
+                echo "Restricted License Violations (${violations.size()}):"
+                violations.each { echo "   FAIL → ${it}" }
+                error("License scan failed: ${violations.size()} restricted license(s) found.\n${violations.join('\n')}")
             } else {
-                echo "License scan passed: ${totalLicenses} licenses found (threshold: ${THRESHOLD})."
+                echo "License scan passed. No restricted licenses found. (Total: ${totalLicenses})"
             }
         }
 
