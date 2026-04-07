@@ -1,0 +1,157 @@
+node {
+    def REPO_URL       = "https://github.com/OT-MICROSERVICES/employee-api.git"
+    def PROJECT_KEY    = "golang-bug-analysis-mukesh-2"
+    def SONAR_HOST_URL = "http://192.168.8.17:9000"
+    def SCANNER_HOME   = tool 'sonar-scanner'
+    def GO_DIR         = "${WORKSPACE}/tools/go"
+    def GO_BIN         = "${GO_DIR}/bin"
+
+    try {
+
+        stage('Clean Workspace') {
+            deleteDir()
+        }
+
+        stage('Checkout Code') {
+            git url: REPO_URL, branch: 'main'
+        }
+
+        stage('Setup Go Locally') {
+    sh """
+        if [ ! -d "${GO_DIR}" ]; then
+            echo "Go not found. Installing..."
+            mkdir -p ${GO_DIR}
+            wget -q https://go.dev/dl/go1.21.7.linux-amd64.tar.gz -O /tmp/go.tar.gz
+            tar -C ${GO_DIR} -xzf /tmp/go.tar.gz --strip-components=1
+            rm -f /tmp/go.tar.gz
+        fi
+    """
+
+    env.GO_BIN = GO_BIN
+
+    sh '''
+        export PATH=$GO_BIN:$PATH
+        echo "Go version:"
+        go version
+    '''
+}
+
+        stage('Go Build') {
+    sh '''
+        go build
+
+        echo "Build stage completed."
+    '''
+}
+
+        stage('Go Unit Tests') {
+    sh '''
+        go test
+
+        echo "Unit tests completed."
+    '''
+}
+
+        stage('Generate Coverage Report') {
+    sh '''
+        export PATH=$GO_BIN:$PATH
+        export GOPATH=$HOME/go
+        export GOCACHE=$WORKSPACE/.cache/go-build
+
+        echo "=== Generating coverage ==="
+        go test $(go list ./... | grep -v vendor) \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -timeout 120s || true
+
+        if [ -f coverage.out ]; then
+            echo "=== Coverage summary ==="
+            go tool cover -func=coverage.out | tail -5
+            echo "Coverage report generated successfully."
+        else
+            echo "WARNING: coverage.out not generated. Creating empty file."
+            touch coverage.out
+        fi
+    '''
+}
+
+        stage('Setup Java (Sonar Requirement)') {
+            script {
+                def javaHome = tool name: 'jdk17', type: 'jdk'
+                env.JAVA_HOME = javaHome
+                env.PATH      = "${javaHome}/bin:${env.PATH}"
+            }
+            sh 'java -version'
+        }
+
+        stage('SonarQube Analysis') {
+    withSonarQubeEnv('SonarQube') {
+        withCredentials([string(credentialsId: 'sonar-token-golang-bug-analysis', variable: 'SONAR_LOGIN')]) {
+
+            env.SCANNER = "${SCANNER_HOME}/bin/sonar-scanner"
+            env.PROJECT_KEY = PROJECT_KEY
+            env.SONAR_HOST_URL = SONAR_HOST_URL
+
+            sh '''
+                export PATH=$GO_BIN:$PATH
+
+                echo "=== Starting SonarQube scan ==="
+                echo "DEBUG -> PROJECT_KEY=$PROJECT_KEY"
+
+                $SCANNER \
+                    -Dsonar.projectKey=$PROJECT_KEY \
+                    -Dsonar.projectName=$PROJECT_KEY \
+                    -Dsonar.sources=. \
+                    -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/tools/** \
+                    -Dsonar.tests=. \
+                    -Dsonar.test.inclusions=**/*_test.go \
+                    -Dsonar.go.coverage.reportPaths=coverage.out \
+                    -Dsonar.host.url=$SONAR_HOST_URL \
+                    -Dsonar.login=$SONAR_LOGIN \
+                    -Dsonar.working.directory=$WORKSPACE/.scannerwork \
+                    -Dsonar.scm.disabled=true
+
+                echo "=== Scan completed ==="
+                ls -la $WORKSPACE/.scannerwork/
+            '''
+        }
+    }
+}
+
+        stage('Quality Gate Check') {
+            script {
+                def reportTask = "${WORKSPACE}/.scannerwork/report-task.txt"
+
+                if (!fileExists(reportTask)) {
+                    error("report-task.txt missing. SonarQube scan did not complete successfully.")
+                }
+
+                echo "SonarQube report-task.txt contents:"
+                sh "cat ${reportTask}"
+
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Success') {
+            echo "SonarQube Analysis Completed Successfully."
+        }
+
+    } catch (Exception e) {
+        currentBuild.result = 'FAILURE'
+        echo "Pipeline Failed: ${e.getMessage()}"
+        throw e
+
+    } finally {
+        stage('Archive Reports') {
+            archiveArtifacts artifacts: 'coverage.out, test-results.txt',
+                             allowEmptyArchive: true,
+                             fingerprint: true
+        }
+        stage('Cleanup') {
+            cleanWs()
+        }
+    }
+}
