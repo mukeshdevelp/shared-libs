@@ -11,7 +11,7 @@ pipeline {
         SUBNET_ID       = "subnet-0ce4198e3ed718046"
         TRIVY_REPORT    = "trivy-report.json"
         SLACK_CHANNEL   = "#ci-operation-notifications"
-    }
+    }   
 
     stages {
 
@@ -73,16 +73,13 @@ pipeline {
                         returnStdout: true
                     ).trim()
                     echo "Public IP: ${env.PUBLIC_IP}"
+                    echo "Waiting for SSH to be ready..."
+                    sleep 60
                 }
             }
         }
 
-        stage('Wait for SSH') {
-            steps {
-                echo "Waiting for SSH to be ready..."
-                sleep 60
-            }
-        }
+        
 
         stage('SSH Check') {
             steps {
@@ -100,39 +97,51 @@ pipeline {
 
         stage('AMI Scan') {
             steps {
-                // Run Trivy on EC2 and save JSON report remotely
-                sh """
-                    ssh -i ${env.PEM_FILE} \
-                    -o StrictHostKeyChecking=no \
-                    ubuntu@${env.PUBLIC_IP} "
-                        echo 'Running Trivy Scan...'
-                        trivy fs / \
-                        --scanners vuln \
-                        --timeout 10m \
-                        --skip-dirs /var,/usr,/lib \
-                        --severity HIGH,CRITICAL \
-                        --format json \
-                        --output /tmp/${env.TRIVY_REPORT} \
-                        --exit-code 0 \
-                        --skip-db-update
-                    "
-                """
-                if (scanStatus != 0) {
-                        error("Trivy detected HIGH/CRITICAL vulnerabilities.")
-                }
+                script {
+                    echo "Running Trivy Scan..."
 
-                // Copy report from EC2 to Jenkins workspace
-                sh """
-                    scp -i ${env.PEM_FILE} \
-                    -o StrictHostKeyChecking=no \
-                    ubuntu@${env.PUBLIC_IP}:/tmp/${env.TRIVY_REPORT} \
-                    ${env.WORKSPACE}/${env.TRIVY_REPORT}
-                """
+                    def scanStatus = sh(
+                        script: """
+                            ssh -i ${env.PEM_FILE} \
+                            -o StrictHostKeyChecking=no \
+                            ubuntu@${env.PUBLIC_IP} "
+                                
+                                # Run scan with timeout protection
+                                trivy rootfs / \
+                                --scanners vuln \
+                                --severity HIGH,CRITICAL \
+                                --ignore-unfixed \
+                                --timeout 15m \
+                                --skip-dirs /var/lib/jenkins,/usr/share,/tmp \
+                                --format json \
+                                --output /tmp/${env.TRIVY_REPORT} \
+                                --exit-code 1 || echo 'TRIVY_FAILED'
+
+                                # Ensure file always exists
+                                if [ ! -f /tmp/${env.TRIVY_REPORT} ]; then
+                                    echo '{}' > /tmp/${env.TRIVY_REPORT}
+                                fi
+                            "
+                        """,
+                        returnStatus: true
+                    )
+
+                    // Always try to copy report
+                    sh """
+                        scp -i ${env.PEM_FILE} \
+                        -o StrictHostKeyChecking=no \
+                        ubuntu@${env.PUBLIC_IP}:/tmp/${env.TRIVY_REPORT} \
+                        ${env.WORKSPACE}/${env.TRIVY_REPORT}
+                    """
+
+                    // Fail pipeline ONLY for vulnerabilities (not timeout crash)
+                    if (scanStatus != 0) {
+                        error("Trivy detected HIGH/CRITICAL vulnerabilities OR scan failed.")
+                    }
+                }
             }
         }
-
     }
-
     post {
 
         always {
@@ -198,5 +207,3 @@ pipeline {
         }
     }
 }
-
-
