@@ -7,8 +7,12 @@ pipeline {
             steps {
                 script {
                     licenseScanningGeneric(
-                        reportDir    : 'reports',
-                        slackChannel : '#ci-operation-notifications'
+                        
+                        // added repo url in jenkinsfile
+                        repoUrl: 'https://github.com/OT-MICROSERVICES/salary-api.git',
+                        branch: 'main',
+                        reportDir: 'reports',
+                        slackChannel: '#ci-operation-notifications'
                     )
                 }
             }

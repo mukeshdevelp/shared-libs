@@ -1,70 +1,86 @@
 // vars/licenseScanning.groovy
 def call(Map config = [:]) {
-    node {
-        // Environment variables
-        def REPORT_DIR = config.get('reportDir', 'reports')
-        
-        // Note -  link to main  repo - It is a demo repo not a repo of OT-MICROSERVICES.
-        def GITHUB_REPO = 'https://github.com/Saarthi-P17/declarative-pipeline-poc.git'  // hardcoded repo
-        def GITHUB_BRANCH = 'main'  // hardcoded branch
 
-        try {
-            stage('checking trivy version') {
-                echo "Installing required tools..."
-                sh '''
-            
+    def REPORT_DIR = config.get('reportDir', 'reports')
+    def SLACK_CHANNEL = config.get('slackChannel', '#ci-operation-notifications')
 
-                echo "Installed versions:"
-                
-                trivy --version
-                '''
+    try {
+
+        stage('Checkout Code') {
+            // Use existing SCM if available, else fallback
+            if (config.repoUrl) {
+                git branch: config.get('branch', 'main'),
+                    url: config.repoUrl
+            } else {
+                checkout scm
             }
+        }
 
-            
+        stage('Trivy Installation') {
+            sh '''
+                if ! command -v trivy >/dev/null 2>&1; then
+                    echo "Trivy not found. Installing..."
+                    
+                    sudo apt-get update -y
+                    sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+                    
+                    wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+                    echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+                    
+                    sudo apt-get update -y
+                    sudo apt-get install -y trivy
+                fi
 
-            stage('License Scan') {
-                sh """
+                echo "Trivy version:"
+                trivy --version
+            '''
+        }
+
+        stage('License Scan') {
+            sh """
                 mkdir -p ${REPORT_DIR}
-
-                trivy fs \
+                pwd
+                ls -al
+                cd salary-api
+                trivy fs . \
                 --scanners license \
                 --format json \
-                --output ${REPORT_DIR}/trivy-license-report.json \
-                .
-                """
-            }
-
-            echo "Build completed successfully."
-
-            // Slack notification for success
-            slackSend(
-                channel: config.get('slackChannel', '#ci-operation-notifications'),
-                color: 'good',
-                message: """
-                Build Successful
-
-                Job: ${env.JOB_NAME}
-                Build: #${env.BUILD_NUMBER}
-                URL: ${env.BUILD_URL}
-                """
-            )
-
-        } catch (err) {
-            // Slack notification for failure
-            slackSend(
-                channel: config.get('slackChannel', '#ci-operation-notifications'),
-                color: 'danger',
-                message: """
-                Build Failed
-
-                Job: ${env.JOB_NAME}
-                Build: #${env.BUILD_NUMBER}
-                URL: ${env.BUILD_URL}
-                """
-            )
-            error "Pipeline failed: ${err}"
-        } finally {
-            archiveArtifacts artifacts: "${REPORT_DIR}/*", fingerprint: true
+                --output ${REPORT_DIR}/trivy-license-report.json
+            """
         }
+
+        echo "License scan completed successfully."
+
+        slackSend(
+            channel: SLACK_CHANNEL,
+            color: 'good',
+            message: """
+            License Scan Successful
+            Job: ${env.JOB_NAME}
+            Build: #${env.BUILD_NUMBER}
+            URL: ${env.BUILD_URL}
+            """
+        )
+
+    } catch (err) {
+
+        slackSend(
+            channel: SLACK_CHANNEL,
+            color: 'danger',
+            message: """
+            License Scan Failed
+            Job: ${env.JOB_NAME}
+            Build: #${env.BUILD_NUMBER}
+            URL: ${env.BUILD_URL}
+            """
+        )
+
+        error "License scan failed: ${err}"
+
+    } finally {
+
+        archiveArtifacts artifacts: "${REPORT_DIR}/*",
+                         fingerprint: true,
+                         allowEmptyArchive: true
     }
 }
