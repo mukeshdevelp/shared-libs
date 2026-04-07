@@ -47,6 +47,15 @@ def call(Map config = [:]) {
                 --format json \
                 --output ${REPORT_DIR}/trivy-license-report.json
             """
+            script {
+                def report = readJSON file: "${REPORT_DIR}/trivy-license-report.json"
+                def totalLicenses = report.Results.collect { it?.Licenses?.size() ?: 0 }.sum()
+                def THRESHOLD = 10
+
+                if (totalLicenses > THRESHOLD) {
+                    error("License scan failed: Found ${totalLicenses} licenses, exceeds threshold of ${THRESHOLD}.")
+                }
+            }
         }
 
         echo "License scan completed successfully."
