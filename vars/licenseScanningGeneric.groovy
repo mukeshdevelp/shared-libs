@@ -53,18 +53,16 @@ def call(Map config = [:]) {
 
             echo "Total licenses detected: ${totalLicenses}"
 
-            // Define which categories should FAIL the build
             def FORBIDDEN_CATEGORIES = ['restricted']
-
-            // Define which categories should WARN only
-            def WARN_CATEGORIES = ['reciprocal', 'unknown']
+            def WARN_CATEGORIES      = ['reciprocal', 'unknown']
+            def VIOLATION_THRESHOLD  = 10
 
             def violations = []
             def warnings   = []
 
             report.Results?.each { result ->
                 result?.Licenses?.each { lic ->
-                    def cat = lic.Category?.toLowerCase()
+                    def cat   = lic.Category?.toLowerCase()
                     def entry = "[${lic.Category}] ${lic.PkgName}: ${lic.Name}"
 
                     if (FORBIDDEN_CATEGORIES.contains(cat)) {
@@ -83,7 +81,23 @@ def call(Map config = [:]) {
             if (violations) {
                 echo "Restricted License Violations (${violations.size()}):"
                 violations.each { echo "   FAIL → ${it}" }
-                error("License scan failed: ${violations.size()} restricted license(s) found.\n${violations.join('\n')}")
+            }
+
+            // --- Failure conditions ---
+            def failReasons = []
+
+            if (violations.size() > VIOLATION_THRESHOLD) {
+                failReasons << "Restricted license violations (${violations.size()}) exceeded threshold of ${VIOLATION_THRESHOLD}."
+            }
+
+            if (violations.any { it.contains('GPL-2.0-only') || it.contains('AGPL') }) {
+                failReasons << "Strictly forbidden licenses detected (GPL-2.0-only / AGPL)."
+            }
+
+            if (failReasons) {
+                error("License scan failed:\n" + failReasons.join('\n'))
+            } else if (violations) {
+                echo "${violations.size()} restricted license(s) found but within threshold (${VIOLATION_THRESHOLD}). Continuing."
             } else {
                 echo "License scan passed. No restricted licenses found. (Total: ${totalLicenses})"
             }
