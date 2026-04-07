@@ -37,28 +37,37 @@ def call(Map config = [:]) {
         }
 
         stage('License Scan') {
-            step{
-                sh """
+            sh """
                 mkdir -p ${REPORT_DIR}
                 pwd
                 ls -al
-                # removed salary-api cd
                 trivy fs . \
-                --scanners license \
-                --format json \
-                --output ${REPORT_DIR}/trivy-license-report.json
+                    --scanners license \
+                    --format json \
+                    --output ${REPORT_DIR}/trivy-license-report.json
             """
-                script {
-                    def report = readJSON file: "${REPORT_DIR}/trivy-license-report.json"
-                    def totalLicenses = report.Results.collect { it?.Licenses?.size() ?: 0 }.sum()
-                    def THRESHOLD = 10
 
-                    if (totalLicenses > THRESHOLD) {
-                        error("License scan failed: Found ${totalLicenses} licenses, exceeds threshold of ${THRESHOLD}.")
-                    }
+            def report = readJSON file: "${REPORT_DIR}/trivy-license-report.json"
+
+            def totalLicenses = report.Results
+                ? report.Results.collect { it?.Licenses?.size() ?: 0 }.sum()
+                : 0
+
+            echo "Total licenses detected: ${totalLicenses}"
+
+            report.Results?.each { result ->
+                result?.Licenses?.each { lic ->
+                    echo "  → [${lic.Category}] ${lic.PkgName}: ${lic.Name}"
                 }
             }
-            
+
+            def THRESHOLD = 10
+
+            if (totalLicenses > THRESHOLD) {
+                error("License scan failed: Found ${totalLicenses} licenses, exceeds threshold of ${THRESHOLD}.")
+            } else {
+                echo "License scan passed: ${totalLicenses} licenses found (threshold: ${THRESHOLD})."
+            }
         }
 
         echo "License scan completed successfully."
