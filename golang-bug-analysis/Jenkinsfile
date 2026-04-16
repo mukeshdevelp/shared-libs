@@ -1,6 +1,5 @@
 node {
 
-    // PARAMETERIZED VALUES
     def REPO_URL       = env.REPO_URL       ?: "https://github.com/mukeshdevelp/ot-microservice-sarthi.git"
     def BRANCH         = env.BRANCH         ?: "backend"
     def PROJECT_KEY    = env.PROJECT_KEY    ?: "golang-bug-analysis-mukesh-2"
@@ -30,12 +29,11 @@ node {
             }
         }
 
-        stage('Setup Go Locally') {
+        stage('Setup Go') {
             try {
                 sh """
                     set -e
                     if [ ! -d "${GO_DIR}" ]; then
-                        echo "Installing Go..."
                         mkdir -p ${GO_DIR}
                         wget -q https://go.dev/dl/go1.21.7.linux-amd64.tar.gz -O /tmp/go.tar.gz
                         tar -C ${GO_DIR} -xzf /tmp/go.tar.gz --strip-components=1
@@ -45,23 +43,33 @@ node {
 
                 env.PATH = "${GO_BIN}:${env.PATH}"
 
-                sh '''
-                    set -e
-                    echo "Go version:"
-                    go version
-                '''
+                sh 'go version'
+
             } catch (e) {
                 error "Go setup failed: ${e}"
             }
         }
 
-        stage('Go Build') {
+        stage('Debug Workspace') {
             try {
                 sh '''
-                    cd "${WORKSPACE}/emploee/emploee-api/"
-                    set -e
-                    go build
+                    pwd
+                    ls -la
                 '''
+            } catch (e) {
+                error "Debug failed: ${e}"
+            }
+        }
+
+        stage('Go Build') {
+            try {
+                dir('employee/employee-api') {
+                    sh '''
+                        set -e
+                        go mod tidy
+                        go build ./...
+                    '''
+                }
             } catch (e) {
                 error "Go build failed: ${e}"
             }
@@ -69,42 +77,36 @@ node {
 
         stage('Go Unit Tests') {
             try {
-                sh '''
-                    cd "${WORKSPACE}/emploee/emploee-api/"
-                    set -e
-                    go test ./...
-                '''
+                dir('employee/employee-api') {
+                    sh '''
+                        set -e
+                        go test ./... | tee test-results.txt
+                    '''
+                }
             } catch (e) {
                 error "Unit tests failed: ${e}"
             }
         }
 
-        stage('Generate Coverage Report') {
+        stage('Generate Coverage') {
             try {
-                sh '''
-                    set -e
-                    cd "${WORKSPACE}/emploee/emploee-api/"
-                    export GOPATH=$HOME/go
-                    export GOCACHE=$WORKSPACE/.cache/go-build
+                dir('employee/employee-api') {
+                    sh '''
+                        set -e
+                        export GOPATH=$HOME/go
+                        export GOCACHE=$WORKSPACE/.cache/go-build
 
-                    go test $(go list ./... | grep -v vendor) \
-                        -coverprofile=coverage.out \
-                        -covermode=atomic \
-                        -timeout 120s
-
-                    if [ -f coverage.out ]; then
-                        go tool cover -func=coverage.out | tail -5
-                    else
-                        echo "Creating empty coverage file"
-                        touch coverage.out
-                    fi
-                '''
+                        go test ./... \
+                            -coverprofile=coverage.out \
+                            -covermode=atomic
+                    '''
+                }
             } catch (e) {
                 error "Coverage generation failed: ${e}"
             }
         }
 
-        stage('Setup Java (Sonar Requirement)') {
+        stage('Setup Java') {
             try {
                 script {
                     def javaHome = tool name: 'jdk17', type: 'jdk'
@@ -122,22 +124,19 @@ node {
                 withSonarQubeEnv('SonarQube') {
                     withCredentials([string(credentialsId: 'sonar-token-golang-bug-analysis', variable: 'SONAR_LOGIN')]) {
 
-                        env.SCANNER = "${SCANNER_HOME}/bin/sonar-scanner"
-
-                        sh '''
-                            set -e
-                            $SCANNER \
-                                -Dsonar.projectKey=$PROJECT_KEY \
-                                -Dsonar.projectName=$PROJECT_KEY \
-                                -Dsonar.sources=. \
-                                -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/tools/** \
-                                -Dsonar.tests=. \
-                                -Dsonar.test.inclusions=**/*_test.go \
-                                -Dsonar.go.coverage.reportPaths=coverage.out \
-                                -Dsonar.host.url=$SONAR_HOST_URL \
-                                -Dsonar.login=$SONAR_LOGIN \
-                                -Dsonar.scm.disabled=true
-                        '''
+                        dir('employee/employee-api') {
+                            sh """
+                                ${SCANNER_HOME}/bin/sonar-scanner \
+                                    -Dsonar.projectKey=${PROJECT_KEY} \
+                                    -Dsonar.projectName=${PROJECT_KEY} \
+                                    -Dsonar.sources=. \
+                                    -Dsonar.tests=. \
+                                    -Dsonar.test.inclusions=**/*_test.go \
+                                    -Dsonar.go.coverage.reportPaths=coverage.out \
+                                    -Dsonar.host.url=${SONAR_HOST_URL} \
+                                    -Dsonar.login=${SONAR_LOGIN}
+                            """
+                        }
                     }
                 }
             } catch (e) {
@@ -145,7 +144,7 @@ node {
             }
         }
 
-        stage('Quality Gate Check') {
+        stage('Quality Gate') {
             try {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
@@ -157,7 +156,7 @@ node {
 
         stage('Success') {
             currentBuild.result = 'SUCCESS'
-            echo "SonarQube Analysis Completed Successfully."
+            echo "Pipeline executed successfully"
         }
 
     } catch (Exception e) {
@@ -167,58 +166,52 @@ node {
 
     } finally {
 
-        //  NOTIFICATIONS (email added)
         stage('Notifications') {
             script {
                 def status = currentBuild.result ?: 'SUCCESS'
                 def color  = (status == 'SUCCESS') ? 'good' : 'danger'
 
-                // Slack
                 try {
-                    step([
-                        $class: 'SlackSendStep',
+                    slackSend(
                         channel: SLACK_CHANNEL,
                         color: color,
-                        message: """\
-                        Go CI Pipeline
-                        
-                        *Status:* ${status}
-                        *Repo:* ${REPO_URL}
-                        *Branch:* ${BRANCH}
-                        *Job:* ${env.JOB_NAME}
-                        *Build:* #${env.BUILD_NUMBER}
-                        *URL:* ${env.BUILD_URL}
+                        message: """
+                        *Go CI Pipeline*
+
+                        Status: ${status}
+                        Repo: ${REPO_URL}
+                        Branch: ${BRANCH}
+                        Job: ${env.JOB_NAME}
+                        Build: #${env.BUILD_NUMBER}
+                        URL: ${env.BUILD_URL}
                         """
-                    ])
+                    )
                 } catch (e) {
-                    echo "Slack notification failed: ${e}"
+                    echo "Slack failed: ${e}"
                 }
 
-                // Email
                 try {
                     emailext(
                         subject: "Build ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """\
-                        Build Status: ${status}
-                        
+                        body: """
+                        Status: ${status}
+
                         Repo: ${REPO_URL}
                         Branch: ${BRANCH}
-                        
-                        Job: ${env.JOB_NAME}
-                        Build: ${env.BUILD_NUMBER}
-                        
-                        URL: ${env.BUILD_URL}
+
+                        Build URL:
+                        ${env.BUILD_URL}
                         """,
                         to: EMAIL_TO
                     )
                 } catch (e) {
-                    echo "Email notification failed: ${e}"
+                    echo "Email failed: ${e}"
                 }
             }
         }
 
-        stage('Archive Reports') {
-            archiveArtifacts artifacts: 'coverage.out, test-results.txt',
+        stage('Archive') {
+            archiveArtifacts artifacts: 'employee/employee-api/coverage.out, employee/employee-api/test-results.txt',
                              allowEmptyArchive: true,
                              fingerprint: true
         }
