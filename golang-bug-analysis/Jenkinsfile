@@ -1,141 +1,162 @@
 node {
-    def REPO_URL       = "https://github.com/OT-MICROSERVICES/employee-api.git"
-    def PROJECT_KEY    = "golang-bug-analysis-mukesh-2"
-    def SONAR_HOST_URL = "http://192.168.8.17:9000"
-    def SCANNER_HOME   = tool 'sonar-scanner'
-    def GO_DIR         = "${WORKSPACE}/tools/go"
-    def GO_BIN         = "${GO_DIR}/bin"
+
+    // PARAMETERIZED VALUES
+    def REPO_URL       = env.REPO_URL       ?: "https://github.com/mukeshdevelp/ot-microservice-sarthi.git"
+    def BRANCH         = env.BRANCH         ?: "backend"
+    def PROJECT_KEY    = env.PROJECT_KEY    ?: "golang-bug-analysis-mukesh-2"
+    def SONAR_HOST_URL = env.SONAR_HOST_URL ?: "http://192.168.8.17:9000"
+    def EMAIL_TO       = env.EMAIL_TO       ?: "devopsp491@gmail.com"
+    def SLACK_CHANNEL  = env.SLACK_CHANNEL  ?: "#ci-operation-notifications"
+
+    def SCANNER_HOME = tool 'sonar-scanner'
+    def GO_DIR       = "${WORKSPACE}/tools/go"
+    def GO_BIN       = "${GO_DIR}/bin"
 
     try {
 
         stage('Clean Workspace') {
-            deleteDir()
+            try {
+                deleteDir()
+            } catch (e) {
+                error "Workspace cleanup failed: ${e}"
+            }
         }
 
         stage('Checkout Code') {
-            git url: REPO_URL, branch: 'main'
+            try {
+                git url: REPO_URL, branch: BRANCH
+            } catch (e) {
+                error "Checkout failed: ${e}"
+            }
         }
 
         stage('Setup Go Locally') {
-            sh """
-                if [ ! -d "${GO_DIR}" ]; then
-                    echo "Go not found. Installing..."
-                    mkdir -p ${GO_DIR}
-                    wget -q https://go.dev/dl/go1.21.7.linux-amd64.tar.gz -O /tmp/go.tar.gz
-                    tar -C ${GO_DIR} -xzf /tmp/go.tar.gz --strip-components=1
-                    rm -f /tmp/go.tar.gz
-                fi
-            """
+            try {
+                sh """
+                    set -e
+                    if [ ! -d "${GO_DIR}" ]; then
+                        echo "Installing Go..."
+                        mkdir -p ${GO_DIR}
+                        wget -q https://go.dev/dl/go1.21.7.linux-amd64.tar.gz -O /tmp/go.tar.gz
+                        tar -C ${GO_DIR} -xzf /tmp/go.tar.gz --strip-components=1
+                        rm -f /tmp/go.tar.gz
+                    fi
+                """
 
-            env.GO_BIN = GO_BIN
+                env.PATH = "${GO_BIN}:${env.PATH}"
 
-            sh '''
-                export PATH=$GO_BIN:$PATH
-                echo "Go version:"
-                go version
-            '''
+                sh '''
+                    set -e
+                    echo "Go version:"
+                    go version
+                '''
+            } catch (e) {
+                error "Go setup failed: ${e}"
+            }
         }
 
         stage('Go Build') {
-            sh '''
-                go build
-
-                echo "Build stage completed."
-            '''
+            try {
+                sh '''
+                    cd "${WORKSPACE}/emploee/emploee-api/"
+                    set -e
+                    go build
+                '''
+            } catch (e) {
+                error "Go build failed: ${e}"
+            }
         }
 
         stage('Go Unit Tests') {
-            sh '''
-                go test
-
-                echo "Unit tests completed."
-            '''
+            try {
+                sh '''
+                    cd "${WORKSPACE}/emploee/emploee-api/"
+                    set -e
+                    go test ./...
+                '''
+            } catch (e) {
+                error "Unit tests failed: ${e}"
+            }
         }
 
         stage('Generate Coverage Report') {
-            sh '''
-                export PATH=$GO_BIN:$PATH
-                export GOPATH=$HOME/go
-                export GOCACHE=$WORKSPACE/.cache/go-build
+            try {
+                sh '''
+                    set -e
+                    cd "${WORKSPACE}/emploee/emploee-api/"
+                    export GOPATH=$HOME/go
+                    export GOCACHE=$WORKSPACE/.cache/go-build
 
-                echo "=== Generating coverage ==="
-                go test $(go list ./... | grep -v vendor) \
-                    -coverprofile=coverage.out \
-                    -covermode=atomic \
-                    -timeout 120s || true
+                    go test $(go list ./... | grep -v vendor) \
+                        -coverprofile=coverage.out \
+                        -covermode=atomic \
+                        -timeout 120s
 
-                if [ -f coverage.out ]; then
-                    echo "=== Coverage summary ==="
-                    go tool cover -func=coverage.out | tail -5
-                    echo "Coverage report generated successfully."
-                else
-                    echo "WARNING: coverage.out not generated. Creating empty file."
-                    touch coverage.out
-                fi
-            '''
+                    if [ -f coverage.out ]; then
+                        go tool cover -func=coverage.out | tail -5
+                    else
+                        echo "Creating empty coverage file"
+                        touch coverage.out
+                    fi
+                '''
+            } catch (e) {
+                error "Coverage generation failed: ${e}"
+            }
         }
 
         stage('Setup Java (Sonar Requirement)') {
-            script {
-                def javaHome = tool name: 'jdk17', type: 'jdk'
-                env.JAVA_HOME = javaHome
-                env.PATH      = "${javaHome}/bin:${env.PATH}"
+            try {
+                script {
+                    def javaHome = tool name: 'jdk17', type: 'jdk'
+                    env.JAVA_HOME = javaHome
+                    env.PATH = "${javaHome}/bin:${env.PATH}"
+                }
+                sh 'java -version'
+            } catch (e) {
+                error "Java setup failed: ${e}"
             }
-            sh 'java -version'
         }
 
         stage('SonarQube Analysis') {
-            withSonarQubeEnv('SonarQube') {
-                withCredentials([string(credentialsId: 'sonar-token-golang-bug-analysis', variable: 'SONAR_LOGIN')]) {
+            try {
+                withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonar-token-golang-bug-analysis', variable: 'SONAR_LOGIN')]) {
 
-                    env.SCANNER = "${SCANNER_HOME}/bin/sonar-scanner"
-                    env.PROJECT_KEY = PROJECT_KEY
-                    env.SONAR_HOST_URL = SONAR_HOST_URL
+                        env.SCANNER = "${SCANNER_HOME}/bin/sonar-scanner"
 
-                    sh '''
-                        export PATH=$GO_BIN:$PATH
-
-                        echo "=== Starting SonarQube scan ==="
-                        echo "DEBUG -> PROJECT_KEY=$PROJECT_KEY"
-
-                        $SCANNER \
-                            -Dsonar.projectKey=$PROJECT_KEY \
-                            -Dsonar.projectName=$PROJECT_KEY \
-                            -Dsonar.sources=. \
-                            -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/tools/** \
-                            -Dsonar.tests=. \
-                            -Dsonar.test.inclusions=**/*_test.go \
-                            -Dsonar.go.coverage.reportPaths=coverage.out \
-                            -Dsonar.host.url=$SONAR_HOST_URL \
-                            -Dsonar.login=$SONAR_LOGIN \
-                            -Dsonar.working.directory=$WORKSPACE/.scannerwork \
-                            -Dsonar.scm.disabled=true
-
-                        echo "=== Scan completed ==="
-                        ls -la $WORKSPACE/.scannerwork/
-                    '''
+                        sh '''
+                            set -e
+                            $SCANNER \
+                                -Dsonar.projectKey=$PROJECT_KEY \
+                                -Dsonar.projectName=$PROJECT_KEY \
+                                -Dsonar.sources=. \
+                                -Dsonar.exclusions=**/*_test.go,**/vendor/**,**/tools/** \
+                                -Dsonar.tests=. \
+                                -Dsonar.test.inclusions=**/*_test.go \
+                                -Dsonar.go.coverage.reportPaths=coverage.out \
+                                -Dsonar.host.url=$SONAR_HOST_URL \
+                                -Dsonar.login=$SONAR_LOGIN \
+                                -Dsonar.scm.disabled=true
+                        '''
+                    }
                 }
+            } catch (e) {
+                error "SonarQube analysis failed: ${e}"
             }
         }
 
         stage('Quality Gate Check') {
-            script {
-                def reportTask = "${WORKSPACE}/.scannerwork/report-task.txt"
-
-                if (!fileExists(reportTask)) {
-                    error("report-task.txt missing. SonarQube scan did not complete successfully.")
-                }
-
-                echo "SonarQube report-task.txt contents:"
-                sh "cat ${reportTask}"
-
+            try {
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
+            } catch (e) {
+                error "Quality Gate failed: ${e}"
             }
         }
 
         stage('Success') {
+            currentBuild.result = 'SUCCESS'
             echo "SonarQube Analysis Completed Successfully."
         }
 
@@ -145,11 +166,63 @@ node {
         throw e
 
     } finally {
+
+        //  NOTIFICATIONS (email added)
+        stage('Notifications') {
+            script {
+                def status = currentBuild.result ?: 'SUCCESS'
+                def color  = (status == 'SUCCESS') ? 'good' : 'danger'
+
+                // Slack
+                try {
+                    step([
+                        $class: 'SlackSendStep',
+                        channel: SLACK_CHANNEL,
+                        color: color,
+                        message: """\
+                        Go CI Pipeline
+                        
+                        *Status:* ${status}
+                        *Repo:* ${REPO_URL}
+                        *Branch:* ${BRANCH}
+                        *Job:* ${env.JOB_NAME}
+                        *Build:* #${env.BUILD_NUMBER}
+                        *URL:* ${env.BUILD_URL}
+                        """
+                    ])
+                } catch (e) {
+                    echo "Slack notification failed: ${e}"
+                }
+
+                // Email
+                try {
+                    emailext(
+                        subject: "Build ${status}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        body: """\
+                        Build Status: ${status}
+                        
+                        Repo: ${REPO_URL}
+                        Branch: ${BRANCH}
+                        
+                        Job: ${env.JOB_NAME}
+                        Build: ${env.BUILD_NUMBER}
+                        
+                        URL: ${env.BUILD_URL}
+                        """,
+                        to: EMAIL_TO
+                    )
+                } catch (e) {
+                    echo "Email notification failed: ${e}"
+                }
+            }
+        }
+
         stage('Archive Reports') {
             archiveArtifacts artifacts: 'coverage.out, test-results.txt',
                              allowEmptyArchive: true,
                              fingerprint: true
         }
+
         stage('Cleanup') {
             cleanWs()
         }
